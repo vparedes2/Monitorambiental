@@ -343,6 +343,27 @@ function setup(){return{input:["CH4","dataMask"],output:{bands:4}}}
 ${RAMPA([[1820, [0.15, 0.2, 0.55]], [1860, [0.2, 0.6, 0.75]], [1900, [0.95, 0.85, 0.35]], [1940, [1, 0.45, 0.1]], [1980, [0.8, 0.05, 0.1]]])}
 function evaluatePixel(s){const c=rampa(s.CH4);return[c[0],c[1],c[2],s.dataMask*0.85]}`
   },
+  no2: {
+    coleccion: "sentinel-5p-l2", dias: 7, mosaico: "mostRecent",
+    script: `//VERSION=3
+function setup(){return{input:["NO2","dataMask"],output:{bands:4}}}
+${RAMPA([[0, [0.15, 0.2, 0.55]], [0.00004, [0.2, 0.6, 0.75]], [0.00008, [0.95, 0.85, 0.35]], [0.00013, [1, 0.45, 0.1]], [0.0002, [0.8, 0.05, 0.1]]])}
+function evaluatePixel(s){const c=rampa(s.NO2);return[c[0],c[1],c[2],s.dataMask*0.85]}`
+  },
+  so2: {
+    coleccion: "sentinel-5p-l2", dias: 7, mosaico: "mostRecent",
+    script: `//VERSION=3
+function setup(){return{input:["SO2","dataMask"],output:{bands:4}}}
+${RAMPA([[0, [0.15, 0.2, 0.55]], [0.0002, [0.2, 0.6, 0.75]], [0.0005, [0.95, 0.85, 0.35]], [0.001, [1, 0.45, 0.1]], [0.002, [0.8, 0.05, 0.1]]])}
+function evaluatePixel(s){const c=rampa(s.SO2);return[c[0],c[1],c[2],s.dataMask*0.85]}`
+  },
+  co: {
+    coleccion: "sentinel-5p-l2", dias: 7, mosaico: "mostRecent",
+    script: `//VERSION=3
+function setup(){return{input:["CO","dataMask"],output:{bands:4}}}
+${RAMPA([[0.02, [0.15, 0.2, 0.55]], [0.025, [0.2, 0.6, 0.75]], [0.03, [0.95, 0.85, 0.35]], [0.04, [1, 0.45, 0.1]], [0.05, [0.8, 0.05, 0.1]]])}
+function evaluatePixel(s){const c=rampa(s.CO);return[c[0],c[1],c[2],s.dataMask*0.85]}`
+  },
   vegetacion: {
     coleccion: "sentinel-2-l2a", dias: 15, filtro: { maxCloudCoverage: 60 }, mosaico: "leastCC",
     script: `//VERSION=3
@@ -409,6 +430,169 @@ app.get("/api/imagen", async (req, res) => {
     return res.send(buf);
   } catch (e: any) {
     return res.status(500).json({ error: e.message || "Error generando la imagen" });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Análisis de suelo y agua (Sentinel-2 L2A, Statistical API de Sentinel Hub).
+// Compara los últimos 60 días contra el mismo período del año anterior para
+// descontar la estacionalidad. Reglas heurísticas documentadas en cada indicador.
+// ---------------------------------------------------------------------------
+const SCRIPT_SUELO_AGUA = `//VERSION=3
+function setup(){return{input:[{bands:["B02","B03","B04","B08","B11","SCL","dataMask"]}],output:[{id:"idx",bands:6,sampleType:"FLOAT32"},{id:"dataMask",bands:1}]}}
+function evaluatePixel(s){
+  const nube=[0,1,3,8,9,10,11].indexOf(s.SCL)>=0;
+  const ndvi=(s.B08-s.B04)/(s.B08+s.B04+1e-6);
+  const ndwi=(s.B03-s.B08)/(s.B03+s.B08+1e-6);
+  const ndmi=(s.B08-s.B11)/(s.B08+s.B11+1e-6);
+  const bsi=((s.B11+s.B04)-(s.B08+s.B02))/((s.B11+s.B04)+(s.B08+s.B02)+1e-6);
+  const agua=(ndwi>0.05 || s.SCL==6)?1:0;
+  const desnudo=(bsi>0.15 && ndvi<0.15)?1:0;
+  return {idx:[ndvi,ndwi,ndmi,bsi,agua,desnudo], dataMask:[(s.dataMask==1 && !nube)?1:0]};
+}`;
+
+const circuloGeo = (lat: number, lon: number, radioM: number, n = 32) => {
+  const coords: [number, number][] = [];
+  for (let i = 0; i <= n; i++) {
+    const a = (i / n) * 2 * Math.PI;
+    coords.push([lon + (radioM * Math.sin(a)) / (111320 * Math.cos((lat * Math.PI) / 180)), lat + (radioM * Math.cos(a)) / 110540]);
+  }
+  return { type: "Polygon", coordinates: [coords] };
+};
+
+const NOMBRES_IDX = ["ndvi", "ndwi", "ndmi", "bsi", "agua", "desnudo"];
+
+const serieEstadistica = async (token: string, geom: any, desde: Date, hasta: Date, lado: number) => {
+  const cuerpo = {
+    input: {
+      bounds: { geometry: geom, properties: { crs: "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } },
+      data: [{ type: "sentinel-2-l2a", dataFilter: { maxCloudCoverage: 70 } }]
+    },
+    aggregation: {
+      timeRange: { from: desde.toISOString(), to: hasta.toISOString() },
+      aggregationInterval: { of: "P5D" },
+      width: lado,
+      height: lado,
+      evalscript: SCRIPT_SUELO_AGUA
+    },
+    calculations: { default: {} }
+  };
+  const r = await fetch("https://sh.dataspace.copernicus.eu/api/v1/statistics", {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(cuerpo)
+  });
+  const txt = await r.text();
+  if (!r.ok) {
+    let msg = txt.slice(0, 300);
+    try { msg = JSON.parse(txt)?.error?.message || msg; } catch { /* texto */ }
+    throw new Error(`Sentinel Hub estadísticas (HTTP ${r.status}): ${msg}`);
+  }
+  const d = JSON.parse(txt);
+  const filas: any[] = [];
+  for (const it of d.data || []) {
+    if (it.error) continue;
+    const bandas = it.outputs?.idx?.bands || {};
+    const claves = Object.keys(bandas).sort((a, b) => Number(a.replace(/\D/g, "")) - Number(b.replace(/\D/g, "")));
+    const fila: any = { fecha: it.interval?.from?.slice(0, 10) };
+    let valido = 0;
+    claves.forEach((k, i) => {
+      const st = bandas[k]?.stats || {};
+      fila[NOMBRES_IDX[i]] = typeof st.mean === "number" && Number.isFinite(st.mean) ? st.mean : null;
+      if (i === 0 && st.sampleCount) valido = (st.sampleCount - (st.noDataCount || 0)) / st.sampleCount;
+    });
+    fila.valido = valido;
+    if (valido >= 0.4 && fila.ndvi !== null) filas.push(fila);
+  }
+  return filas;
+};
+
+const mediana = (xs: number[]) => {
+  const v = xs.filter((x) => Number.isFinite(x)).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const m = Math.floor(v.length / 2);
+  return v.length % 2 ? v[m] : (v[m - 1] + v[m]) / 2;
+};
+
+type Nivel = "normal" | "observar" | "alerta" | "sin_datos";
+
+const evaluarSueloAgua = (base: any[], reciente: any[]) => {
+  const med = (filas: any[], k: string) => mediana(filas.map((f) => f[k]).filter((x) => x !== null));
+  const ind = (id: string, nombre: string, k: string, regla: (b: number, r: number) => { nivel: Nivel; lectura: string }, escala = 1, unidad = "") => {
+    const b = med(base, k);
+    const r = med(reciente, k);
+    if (b === null || r === null) return { id, nombre, base: b, reciente: r, delta: null, nivel: "sin_datos" as Nivel, lectura: "No hay suficientes imágenes sin nubes para comparar.", unidad };
+    const res = regla(b, r);
+    return { id, nombre, base: b * escala, reciente: r * escala, delta: (r - b) * escala, unidad, ...res };
+  };
+
+  const indicadores = [
+    ind("agua", "Agua superficial", "agua", (b, r) => {
+      const d = r - b;
+      if (d >= 0.03 && r >= 0.02) return { nivel: "alerta", lectura: `La superficie con agua pasó de ${(b * 100).toFixed(1)}% a ${(r * 100).toFixed(1)}% del área. Puede ser una pileta nueva, un derrame de agua de retorno o anegamiento: verificar en imagen.` };
+      if (d >= 0.01 && r >= 0.01) return { nivel: "observar", lectura: `Aumento leve de superficie con agua (${(b * 100).toFixed(1)}% → ${(r * 100).toFixed(1)}%).` };
+      return { nivel: "normal", lectura: "Sin cambios relevantes en la superficie con agua respecto del año anterior." };
+    }, 100, "% del área"),
+    ind("humedad", "Humedad del suelo (NDMI)", "ndmi", (b, r) => {
+      const d = r - b;
+      if (d >= 0.08) return { nivel: "alerta", lectura: "Suelo marcadamente más húmedo que el año anterior en la misma época. Compatible con vuelco de líquidos o pérdidas; sin lluvias recientes, verificar." };
+      if (d >= 0.04) return { nivel: "observar", lectura: "Suelo algo más húmedo que el año anterior. Puede deberse a lluvias; contrastar con registros meteorológicos." };
+      return { nivel: "normal", lectura: "Humedad del suelo dentro de lo esperable para la época." };
+    }),
+    ind("desnudo", "Suelo desnudo / movimiento de suelo", "desnudo", (b, r) => {
+      const d = r - b;
+      if (d >= 0.15) return { nivel: "alerta", lectura: `El suelo descubierto creció de ${(b * 100).toFixed(0)}% a ${(r * 100).toFixed(0)}% del área: típico de una locación, picada o desmonte nuevo.` };
+      if (d >= 0.05) return { nivel: "observar", lectura: `Aumento de suelo descubierto (${(b * 100).toFixed(0)}% → ${(r * 100).toFixed(0)}%).` };
+      return { nivel: "normal", lectura: "Sin aumento relevante de suelo descubierto." };
+    }, 100, "% del área"),
+    ind("vegetacion", "Cubierta vegetal (NDVI)", "ndvi", (b, r) => {
+      const d = r - b;
+      const rel = b > 0.02 ? d / b : 0;
+      if (d <= -0.07 || (b > 0.1 && rel <= -0.35)) return { nivel: "alerta", lectura: "Pérdida marcada de vegetación respecto del año anterior: desmonte, contaminación de suelo o sequía; verificar." };
+      if (d <= -0.03 || (b > 0.1 && rel <= -0.15)) return { nivel: "observar", lectura: "Leve disminución de la vegetación respecto del año anterior." };
+      return { nivel: "normal", lectura: "Vegetación similar al año anterior." };
+    })
+  ];
+  const orden: Record<Nivel, number> = { sin_datos: 0, normal: 1, observar: 2, alerta: 3 };
+  const general = indicadores.reduce<Nivel>((acc, i) => (orden[i.nivel] > orden[acc] ? i.nivel : acc), "sin_datos");
+  return { indicadores, nivel_general: general };
+};
+
+const analizarPunto = async (lat: number, lon: number, radioM: number) => {
+  const token = await obtenerTokenCdse();
+  const geom = circuloGeo(lat, lon, radioM);
+  const lado = Math.round(Math.min(250, Math.max(24, (2 * radioM) / 20)));
+  const hasta = new Date();
+  const desde = new Date(hasta.getTime() - 60 * 86400000);
+  const hastaBase = new Date(hasta.getTime() - 365 * 86400000);
+  const desdeBase = new Date(desde.getTime() - 365 * 86400000);
+  const [reciente, base] = await Promise.all([
+    serieEstadistica(token, geom, desde, hasta, lado),
+    serieEstadistica(token, geom, desdeBase, hastaBase, lado)
+  ]);
+  const ev = evaluarSueloAgua(base, reciente);
+  return {
+    punto: { lat, lon },
+    radio_m: radioM,
+    periodos: {
+      reciente: { desde: desde.toISOString().slice(0, 10), hasta: hasta.toISOString().slice(0, 10), escenas_validas: reciente.length },
+      base: { desde: desdeBase.toISOString().slice(0, 10), hasta: hastaBase.toISOString().slice(0, 10), escenas_validas: base.length }
+    },
+    ...ev,
+    series: { reciente, base },
+    metodo: "Sentinel-2 L2A a 20 m, nubes y sombras excluidas con la clasificación SCL. Medianas de compuestos de 5 días. Comparación contra el mismo período del año anterior. Umbrales heurísticos: requieren verificación en campo o con imagen."
+  };
+};
+
+app.get("/api/analisis/suelo-agua", async (req, res) => {
+  try {
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    const radio = Math.min(3000, Math.max(100, Number(req.query.radio) || 500));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ error: "Faltan lat y lon" });
+    return res.json(await analizarPunto(lat, lon, radio));
+  } catch (e: any) {
+    return res.status(502).json({ error: e.message || "Error en el análisis" });
   }
 });
 

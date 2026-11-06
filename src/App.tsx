@@ -1,9 +1,10 @@
 import React, { Suspense, lazy, useEffect, useState } from "react";
-import { Globe2, Orbit, Flame, Images, FlaskConical } from "lucide-react";
+import { Globe2, Orbit, Flame, Images, FlaskConical, Droplets } from "lucide-react";
 
 const CentroMando = lazy(() => import("./screens/CentroMando"));
 const Orbitas = lazy(() => import("./screens/Orbitas"));
 const Imagenes = lazy(() => import("./screens/Imagenes"));
+const SueloAgua = lazy(() => import("./screens/SueloAgua"));
 const TableroDemo = lazy(() => import("./screens/TableroDemo"));
 
 class Resguardo extends React.Component<{ children: React.ReactNode; clave: string }, { error: string | null }> {
@@ -23,12 +24,13 @@ class Resguardo extends React.Component<{ children: React.ReactNode; clave: stri
   }
 }
 
-type Ruta = "inicio" | "orbitas" | "focos" | "catalogo" | "demo";
+type Ruta = "inicio" | "orbitas" | "focos" | "suelo" | "catalogo" | "demo";
 
-const RUTAS: { id: Ruta; nombre: string; icono: React.ElementType }[] = [
+const RUTAS: { id: Ruta; nombre: string; corto?: string; icono: React.ElementType }[] = [
   { id: "inicio", nombre: "Inicio", icono: Globe2 },
   { id: "orbitas", nombre: "Órbitas", icono: Orbit },
   { id: "focos", nombre: "Focos", icono: Flame },
+  { id: "suelo", nombre: "Suelo y agua", corto: "Suelo", icono: Droplets },
   { id: "catalogo", nombre: "Imágenes", icono: Images },
   { id: "demo", nombre: "Demo", icono: FlaskConical }
 ];
@@ -85,7 +87,7 @@ export default function App() {
       </nav>
 
       {/* Barra inferior (móvil) */}
-      <nav aria-label="Pantallas" className="lg:hidden fixed bottom-0 inset-x-0 h-[64px] grid grid-cols-5 border-t border-linea bg-noche/95 backdrop-blur z-50">
+      <nav aria-label="Pantallas" className="lg:hidden fixed bottom-0 inset-x-0 h-[64px] grid grid-cols-6 border-t border-linea bg-noche/95 backdrop-blur z-50">
         {RUTAS.map((r) => {
           const activo = ruta === r.id;
           const I = r.icono;
@@ -93,7 +95,7 @@ export default function App() {
             <a key={r.id} href={`#/${r.id}`} aria-current={activo ? "page" : undefined}
               className={`flex flex-col items-center justify-center gap-0.5 text-[11px] ${activo ? "text-hielo" : "text-tenue"}`}>
               <I className="w-5 h-5" strokeWidth={1.6} />
-              {r.nombre}
+              {r.corto ?? r.nombre}
             </a>
           );
         })}
@@ -105,6 +107,7 @@ export default function App() {
           {ruta === "inicio" && <CentroMando irA={irA} />}
           {ruta === "orbitas" && <Orbitas />}
           {ruta === "focos" && <TableroDemo vista="venteos" />}
+          {ruta === "suelo" && <SueloAgua />}
           {ruta === "catalogo" && <Imagenes />}
           {ruta === "demo" && <TableroDemo vista="general" />}
         </Suspense>

@@ -31,6 +31,21 @@ const CAPAS: Capa[] = [
     leyenda: { colores: "linear-gradient(90deg,#26338c,#3399bf,#f2d959,#ff731a,#cc0d1a)", min: "1820 ppb", max: "1980 ppb" }
   },
   {
+    id: "no2", nombre: "Dióxido de nitrógeno (NO₂)", satelite: "Sentinel-5P TROPOMI", resolucion: "5,5 × 3,5 km", dias: 7,
+    muestra: "Gas de combustión: motores, compresores, antorchas y tránsito pesado. Las zonas con mucha actividad de equipos suelen verse más cargadas. Escala regional.",
+    leyenda: { colores: "linear-gradient(90deg,#26338c,#3399bf,#f2d959,#ff731a,#cc0d1a)", min: "0", max: "200 µmol/m²" }
+  },
+  {
+    id: "so2", nombre: "Dióxido de azufre (SO₂)", satelite: "Sentinel-5P TROPOMI", resolucion: "5,5 × 3,5 km", dias: 7,
+    muestra: "Asociado a quema de gas con azufre (gas ácido) y a fuentes industriales. Señal débil y ruidosa a nivel local: tomar como indicio regional.",
+    leyenda: { colores: "linear-gradient(90deg,#26338c,#3399bf,#f2d959,#ff731a,#cc0d1a)", min: "0", max: "2 mmol/m²" }
+  },
+  {
+    id: "co", nombre: "Monóxido de carbono (CO)", satelite: "Sentinel-5P TROPOMI", resolucion: "5,5 × 7 km", dias: 7,
+    muestra: "Producto de combustión incompleta: antorchas ineficientes e incendios. Se transporta lejos con el viento, por eso es regional.",
+    leyenda: { colores: "linear-gradient(90deg,#26338c,#3399bf,#f2d959,#ff731a,#cc0d1a)", min: "20 mmol/m²", max: "50 mmol/m²" }
+  },
+  {
     id: "radar", nombre: "Radar", satelite: "Sentinel-1", resolucion: "10 m", dias: 12,
     muestra: "Imagen de radar: funciona de noche y a través de las nubes. Las estructuras metálicas (tanques, equipos, cañerías) rebotan la señal y se ven muy brillantes."
   },
