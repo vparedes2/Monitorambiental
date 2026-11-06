@@ -859,7 +859,7 @@ const GEOSERVER_NQN = "https://hidrocarburos.energianeuquen.gob.ar/geoserver/Hid
 const CAPAS_WFS_NQN = new Set(["Areas", "Concesiones", "VM_Distribucion_Fluidos", "Ductos", "Instalaciones", "Locaciones", "Lineas_de_conduccion", "Pozos", "Pozos_VM", "Puntos_medicion", "Venteos"]);
 const cacheNqn: Record<string, { t: number; data: any }> = {};
 
-const GEOM_NQN: Record<string, string> = { Instalaciones: "Shape", Ductos: "Shape" };
+const GEOM_NQN: Record<string, string> = { Instalaciones: "Shape", Ductos: "Shape", Areas: "Shape" };
 const wfsNqn = async (capa: string, opciones: { props?: string[]; cql?: string; max?: number; geom?: string } = {}) => {
   if (!CAPAS_WFS_NQN.has(capa)) throw new Error(`Capa desconocida: ${capa}`);
   const p = new URLSearchParams({
@@ -897,6 +897,31 @@ const recortar = (fc: any, mapa: (p: any) => any) => ({
   features: (fc.features || []).filter((f: any) => f.geometry).map((f: any) => ({ type: "Feature", id: f.id, geometry: f.geometry, properties: mapa(f.properties || {}) }))
 });
 
+// Simplificación: coordenadas a 4 decimales y se descartan vértices a menos de ~60 m del anterior
+const simplificarLinea = (linea: number[][], cerrar: boolean) => {
+  const out: number[][] = [];
+  for (const [x, y] of linea) {
+    const q = [Math.round(x * 1e4) / 1e4, Math.round(y * 1e4) / 1e4];
+    const u = out[out.length - 1];
+    if (!u || Math.abs(u[0] - q[0]) + Math.abs(u[1] - q[1]) > 0.0007) out.push(q);
+  }
+  const ultimo = linea[linea.length - 1];
+  if (!cerrar && ultimo && out.length) out[out.length - 1] = [Math.round(ultimo[0] * 1e4) / 1e4, Math.round(ultimo[1] * 1e4) / 1e4];
+  if (cerrar && out.length > 2) { const a = out[0], z = out[out.length - 1]; if (a[0] !== z[0] || a[1] !== z[1]) out.push(a); }
+  return out;
+};
+const simplificarFc = (fc: any) => {
+  for (const f of fc.features || []) {
+    const g = f.geometry;
+    if (!g) continue;
+    if (g.type === "LineString") g.coordinates = simplificarLinea(g.coordinates, false);
+    if (g.type === "MultiLineString") g.coordinates = g.coordinates.map((l: any) => simplificarLinea(l, false)).filter((l: any) => l.length >= 2);
+    if (g.type === "Polygon") g.coordinates = g.coordinates.map((r: any) => simplificarLinea(r, true)).filter((r: any) => r.length >= 4);
+    if (g.type === "MultiPolygon") g.coordinates = g.coordinates.map((pol: any) => pol.map((r: any) => simplificarLinea(r, true)).filter((r: any) => r.length >= 4)).filter((pol: any) => pol.length);
+  }
+  return fc;
+};
+
 const CAPAS_NQN: Record<string, () => Promise<any>> = {
   instalaciones: async () => recortar(await wfsNqn("Instalaciones"), (p) => ({
     id: limpio(p.ID_INST), nombre: limpio(p.NOMBRE) ?? limpio(p.INSTALACIO), sigla: limpio(p.INSTALACIO), tipo: limpio(p.TIPO_INST),
@@ -918,29 +943,13 @@ const CAPAS_NQN: Record<string, () => Promise<any>> = {
     formacion: limpio(p.FORM_PROD), anio: p["AÑO_PERF"] ?? null, profundidad_m: p.PROFUNDIDAD_MEDIDA || null
   })),
   areas: async () => {
-    const fc = await wfsNqn("Areas", { props: ["NOMBRE", "OPERADOR", "TITULAR", "TIPO_AREA", "SIGLA", "FIN_CONTRATO"] });
-    // Simplificación: coordenadas a 4 decimales y se descartan vértices a menos de ~60 m del anterior
-    const simpl = (anillo: number[][]) => {
-      const out: number[][] = [];
-      for (const [x, y] of anillo) {
-        const q = [Math.round(x * 1e4) / 1e4, Math.round(y * 1e4) / 1e4];
-        const u = out[out.length - 1];
-        if (!u || Math.abs(u[0] - q[0]) + Math.abs(u[1] - q[1]) > 0.0007) out.push(q);
-      }
-      if (out.length > 2) { const a = out[0], b = out[out.length - 1]; if (a[0] !== b[0] || a[1] !== b[1]) out.push(a); }
-      return out;
-    };
-    for (const f of fc.features || []) {
-      const g = f.geometry;
-      if (!g) continue;
-      if (g.type === "Polygon") g.coordinates = g.coordinates.map(simpl).filter((r: any) => r.length >= 4);
-      if (g.type === "MultiPolygon") g.coordinates = g.coordinates.map((pol: any) => pol.map(simpl).filter((r: any) => r.length >= 4)).filter((pol: any) => pol.length);
-    }
+    const fc = structuredClone(await wfsNqn("Areas", { props: ["NOMBRE", "OPERADOR", "TITULAR", "TIPO_AREA", "SIGLA", "FIN_CONTRATO"] }));
+    simplificarFc(fc);
     return recortar(fc, (p) => ({
       nombre: limpio(p.NOMBRE), sigla: limpio(p.SIGLA), operador: limpio(p.OPERADOR), titular: limpio(p.TITULAR), tipo: limpio(p.TIPO_AREA), fin_contrato: fechaIso(p.FIN_CONTRATO)
     }));
   },
-  ductos: async () => recortar(await wfsNqn("Ductos"), (p) => ({
+  ductos: async () => recortar(simplificarFc(structuredClone(await wfsNqn("Ductos"))), (p) => ({
     id: limpio(p.ID_DUCTO), nombre: limpio(p.NOMBRE), fluido: limpio(p.FLUIDO), tipo: limpio(p.TIPO), operador: limpio(p.OPERADOR),
     diametro_pulg: p.DIAMETRO ?? null, longitud_km: p.DISTANCIA ?? null, estado: limpio(p.ESTADO), desde: limpio(p.DESDE), hasta: limpio(p.HASTA)
   }))
