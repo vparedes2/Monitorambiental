@@ -128,7 +128,7 @@ export function areaDe(lat: number, lon: number, areas: any): any | null {
 export type Clase = "autorizado" | "vencido" | "instalacion" | "fuera" | "sin_registro";
 export const CLASES: Record<Clase, { nombre: string; color: string; detalle: string }> = {
   autorizado: { nombre: "Venteo autorizado vigente", color: "#7BD88F", detalle: "A menos de 1 km de un venteo con permiso vigente" },
-  vencido: { nombre: "Permiso de venteo vencido", color: "#FFC857", detalle: "A menos de 1 km de un venteo cuyo permiso ya venció" },
+  vencido: { nombre: "Permiso vencido en el registro", color: "#FFC857", detalle: "A menos de 1 km de un venteo cuyo permiso figura vencido en el registro provincial (puede estar renovado y sin actualizar)" },
   instalacion: { nombre: "Instalación sin permiso de venteo registrado", color: "#FF8A3D", detalle: "A menos de 1 km de una instalación declarada, sin venteo autorizado en el registro" },
   fuera: { nombre: "Dentro de un área, lejos de instalaciones", color: "#FF4D6D", detalle: "Dentro de un área hidrocarburífera de Neuquén, sin instalación ni venteo declarado a menos de 1 km" },
   sin_registro: { nombre: "Fuera del registro de Neuquén", color: "#8BA0B6", detalle: "Fuera de las áreas hidrocarburíferas de Neuquén (otra provincia o zona sin concesión): el registro provincial no lo cubre" }
@@ -142,7 +142,9 @@ export interface Clasificacion {
 }
 
 export function clasificarFoco(lat: number, lon: number, instalaciones: Instalacion[], venteos: VenteoAutorizado[], areas?: any): Clasificacion {
-  const v = masCercano(lat, lon, venteos);
+  // Primero un permiso vigente dentro de la tolerancia (una instalación puede tener permisos viejos y renovados)
+  const vVig = masCercano(lat, lon, venteos.filter((x) => vigente(x)));
+  const v = vVig && vVig.distancia <= TOLERANCIA_M ? vVig : masCercano(lat, lon, venteos);
   const i = masCercano(lat, lon, instalaciones);
   const area = areas ? areaDe(lat, lon, areas) : null;
   if (v && v.distancia <= TOLERANCIA_M) return { clase: vigente(v.item) ? "autorizado" : "vencido", venteo: v, instalacion: i, area };
