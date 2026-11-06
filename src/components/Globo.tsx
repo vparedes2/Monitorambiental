@@ -162,6 +162,7 @@ export default function Globo({ centro, zoom, interactivo = true, onListo, class
       const base = MAPAS_BASE.find((b) => b.id === baseId) ?? MAPAS_BASE[0];
       if (base.id !== "esri") aplicarBase(map, base);
       setCargado(true);
+      if (interactivo) map.addControl(new maplibregl.NavigationControl({ visualizePitch: true }), "bottom-right");
       map.on("error", (e: any) => {
         if (e?.sourceId === "satelite" && ++errores.current === 6) setAviso("Esta fuente no devolvió imagen para la zona o fecha. Probá otro mapa base.");
       });
@@ -264,4 +265,17 @@ export function setGeo(map: MLMap, id: string, data: GeoJSON.FeatureCollection |
   const src = map.getSource(id) as maplibregl.GeoJSONSource | undefined;
   if (src) src.setData(data as any);
   else map.addSource(id, { type: "geojson", data: data as any });
+}
+
+/** Vuelo con zoom hacia un punto y anillo de enfoque al llegar */
+export function enfocar(map: MLMap, centro: [number, number], zoom = 12.5) {
+  const reduce = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+  if (reduce) { map.jumpTo({ center: centro, zoom }); return; }
+  map.flyTo({ center: centro, zoom, pitch: 50, bearing: map.getBearing() - 10, speed: 1.4, curve: 1.6, essential: true });
+  map.once("moveend", () => {
+    const el = document.createElement("div");
+    el.className = "anillo-enfoque";
+    map.getContainer().appendChild(el);
+    setTimeout(() => el.remove(), 1400);
+  });
 }

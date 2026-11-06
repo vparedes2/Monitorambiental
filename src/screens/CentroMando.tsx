@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { Map as MLMap } from "maplibre-gl";
 import { motion, AnimatePresence } from "motion/react";
-import Globo, { setGeo } from "../components/Globo";
+import Globo, { setGeo, enfocar } from "../components/Globo";
+import { LogoMarca } from "../components/Logo";
 import { useFirms, useTle, parseFechaFirms, usePrefiereMenosMovimiento } from "../lib/useData";
 import { prepararSatelites, posicion, proximaPasada, fmtCuenta, ANELO } from "../lib/orbits";
 import { SkipForward, RotateCcw, FileDown } from "lucide-react";
@@ -31,6 +32,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
   const [aterrizado, setAterrizado] = useState(false);
   const [ahora, setAhora] = useState(new Date());
   const marcadores = useRef<Record<string, maplibregl.Marker>>({});
+  const [focoSel, setFocoSel] = useState<number | null>(null);
 
   const sats = useMemo(() => prepararSatelites(satelites), [satelites]);
 
@@ -92,7 +94,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
       type: "FeatureCollection",
       features: focos.map((f) => ({
         type: "Feature",
-        properties: { frp: f.frp, match: f.match },
+        properties: { frp: f.frp, match: f.match, idx: focos.indexOf(f) },
         geometry: { type: "Point", coordinates: [f.lon, f.lat] }
       }))
     };
@@ -113,6 +115,15 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
           "circle-stroke-color": "#0A1628", "circle-stroke-width": 1
         }
       });
+      // Tocar un foco: vuelo con zoom y ficha del foco
+      map.on("click", "focos-halo", (e: any) => {
+        const ft = e.features?.[0];
+        if (!ft) return;
+        setFocoSel(ft.properties.idx);
+        enfocar(map, ft.geometry.coordinates as [number, number], 12.5);
+      });
+      map.on("mouseenter", "focos-halo", () => { map.getCanvas().style.cursor = "pointer"; });
+      map.on("mouseleave", "focos-halo", () => { map.getCanvas().style.cursor = ""; });
     }
     if (reduce) return;
     let raf = 0;
@@ -233,7 +244,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
 
         {/* Rótulo cinematográfico */}
         <div className="pointer-events-none absolute left-5 top-5 sm:left-8 sm:top-8 max-w-[34rem]">
-          <p className="num text-[11px] text-hielo/80">Monitor ambiental Vaca Muerta</p>
+          <p className="flex items-center gap-2 text-xs text-hielo/90"><LogoMarca size={26} animado /> Monitor ambiental satelital</p>
           <AnimatePresence mode="wait">
             <motion.div
               key={actoActual.titulo}
@@ -251,6 +262,37 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
             </motion.div>
           </AnimatePresence>
         </div>
+
+        {/* Ficha del foco elegido */}
+        <AnimatePresence>
+          {focoSel !== null && focos[focoSel] && (
+            <motion.div
+              initial={{ opacity: 0, y: 16, scale: 0.97 }} animate={{ opacity: 1, y: 0, scale: 1 }} exit={{ opacity: 0, y: 10 }}
+              className="absolute left-4 sm:left-8 bottom-36 w-[300px] max-w-[calc(100%-2rem)] instrumento p-4 z-10"
+            >
+              {(() => {
+                const f = focos[focoSel];
+                return (
+                  <>
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="titulo text-2xl font-semibold text-llama leading-none">{f.frp.toFixed(1)} MW</p>
+                      <button onClick={() => { setFocoSel(null); mapRef.current?.easeTo({ zoom: 7.6, pitch: 52, duration: 1200 }); }} className="text-xs text-tenue hover:text-texto">Cerrar</button>
+                    </div>
+                    <p className="text-xs text-tenue mt-1">Potencia radiativa del foco</p>
+                    <dl className="mt-3 space-y-1 text-sm">
+                      <div className="flex justify-between gap-3"><dt className="text-tenue">Fecha</dt><dd className="num text-xs">{f.fecha}</dd></div>
+                      <div className="flex justify-between gap-3"><dt className="text-tenue">Sensor</dt><dd className="text-xs text-right">{f.sensor.replace("NASA FIRMS ", "")}</dd></div>
+                      <div className="flex justify-between gap-3"><dt className="text-tenue">Posición</dt><dd className="num text-xs">{f.lat.toFixed(4)}, {f.lon.toFixed(4)}</dd></div>
+                      <div className="flex justify-between gap-3"><dt className="text-tenue">Catastro</dt><dd className="text-xs text-right">{f.match ? f.instalacion : "Sin instalación cerca"}</dd></div>
+                    </dl>
+                    <a className="mt-3 block text-center text-xs px-3 py-1.5 border border-linea text-hielo hover:border-hielo" target="_blank" rel="noopener"
+                      href={`https://earth.google.com/web/@${f.lat},${f.lon},0a,1500d,35y,0h,45t,0r`}>Ver en Google Earth ↗</a>
+                  </>
+                );
+              })()}
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Línea de tiempo tipo editor de video */}
         <div className="absolute left-4 right-4 bottom-10 sm:left-8 sm:right-8 sm:bottom-10">
@@ -334,7 +376,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
 function PanelLectura({ focos, frpTotal, sinCatastro, catastro, estado, histo, maxBin, irA, exportarInforme, exportarKml, exportarCsv }: any) {
   return (
     <div>
-      <p className="text-xs text-tenue">Últimas 48 h, NASA FIRMS (VIIRS 375 m)</p>
+      <p className="text-xs text-tenue">Últimas 48 h, NASA FIRMS (VIIRS 375 m). Tocá un foco en el mapa para acercarte.</p>
       <div className="flex items-end gap-6 mt-2">
         <div>
           <p className="num text-5xl text-llama leading-none">{focos}</p>

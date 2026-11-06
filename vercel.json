@@ -13,7 +13,7 @@
       "destination": "/api"
     },
     {
-      "source": "/((?!api/|assets/).*)",
+      "source": "/((?!api/|assets/|favicon\\.svg|icon-|og-image|manifest\\.webmanifest).*)",
       "destination": "/index.html"
     }
   ],

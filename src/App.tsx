@@ -1,5 +1,7 @@
 import React, { Suspense, lazy, useEffect, useState } from "react";
 import { Globe2, Orbit, Flame, Images, FlaskConical, Droplets } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
+import { LogoMarca } from "./components/Logo";
 
 const CentroMando = lazy(() => import("./screens/CentroMando"));
 const Orbitas = lazy(() => import("./screens/Orbitas"));
@@ -45,18 +47,24 @@ const leerRuta = (): Ruta => {
   return RUTAS.some((r) => r.id === h) ? h : "inicio";
 };
 
-function Marca() {
+function Cargando() {
   return (
-    <svg viewBox="0 0 40 40" className="w-9 h-9" aria-hidden="true">
-      <circle cx="20" cy="20" r="7" fill="none" stroke="#C9A46A" strokeWidth="2" />
-      <ellipse cx="20" cy="20" rx="17" ry="7" fill="none" stroke="#8FE3F0" strokeWidth="1.2" transform="rotate(-28 20 20)" />
-      <rect x="33" y="10" width="4" height="4" fill="#FF8A3D" transform="rotate(45 35 12)" />
-    </svg>
+    <div className="min-h-[60vh] grid place-items-center">
+      <div className="flex flex-col items-center gap-3">
+        <LogoMarca size={72} animado />
+        <span className="text-xs text-tenue">Preparando la pantalla…</span>
+      </div>
+    </div>
   );
 }
 
 export default function App() {
   const [ruta, setRuta] = useState<Ruta>(leerRuta);
+
+  useEffect(() => {
+    const r = RUTAS.find((x) => x.id === ruta);
+    document.title = ruta === "inicio" ? "Vaca Muerta · Monitor ambiental satelital" : `${r?.nombre} · Vaca Muerta monitor ambiental`;
+  }, [ruta]);
 
   useEffect(() => {
     const h = () => setRuta(leerRuta());
@@ -73,14 +81,14 @@ export default function App() {
     <div className="sala min-h-screen lg:pl-[88px] pb-[68px] lg:pb-0">
       {/* Riel de navegación (escritorio) */}
       <nav aria-label="Pantallas" className="hidden lg:flex fixed left-0 top-0 bottom-0 w-[88px] flex-col items-center gap-1 py-5 border-r border-linea bg-noche/95 z-50">
-        <a href="#/inicio" className="mb-5" aria-label="Monitor ambiental Vaca Muerta, inicio"><Marca /></a>
+        <a href="#/inicio" className="mb-5 logo-hover" aria-label="Monitor ambiental Vaca Muerta, inicio"><LogoMarca size={44} /></a>
         {RUTAS.map((r) => {
           const activo = ruta === r.id;
           const I = r.icono;
           return (
             <a key={r.id} href={`#/${r.id}`} aria-current={activo ? "page" : undefined}
               className={`relative w-[72px] py-2.5 flex flex-col items-center gap-1 text-[11px] ${activo ? "text-hielo" : "text-tenue hover:text-texto"}`}>
-              {activo && <span className="absolute left-[-8px] top-2 bottom-2 w-[3px] bg-hielo" />}
+              {activo && <motion.span layoutId="riel-activo" className="absolute left-[-8px] top-2 bottom-2 w-[3px] bg-hielo shadow-[0_0_12px_#8FE3F0]" transition={{ type: "spring", stiffness: 500, damping: 40 }} />}
               <I className="w-5 h-5" strokeWidth={1.6} />
               {r.nombre}
             </a>
@@ -109,13 +117,17 @@ export default function App() {
 
       <main>
         <Resguardo clave={ruta}>
-        <Suspense fallback={<div className="p-8 text-tenue">Cargando…</div>}>
+        <Suspense fallback={<Cargando />}>
+          <AnimatePresence mode="wait">
+          <motion.div key={ruta} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
           {ruta === "inicio" && <CentroMando irA={irA} />}
           {ruta === "orbitas" && <Orbitas />}
           {ruta === "focos" && <TableroDemo vista="venteos" />}
           {ruta === "suelo" && <SueloAgua />}
           {ruta === "catalogo" && <Imagenes />}
           {ruta === "demo" && <TableroDemo vista="general" />}
+          </motion.div>
+          </AnimatePresence>
         </Suspense>
         </Resguardo>
       </main>
