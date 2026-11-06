@@ -288,6 +288,130 @@ const generateHighFidelityReport = (params: any, isFromException: boolean = fals
 };
 
 // API Endpoint to establish a real connection to Copernicus CDSE and OpenAQ databases
+// ---------------------------------------------------------------------------
+// Imágenes satelitales procesadas (Sentinel Hub en Copernicus Data Space).
+// Cada capa es un "evalscript" que define qué bandas se combinan y cómo.
+// ---------------------------------------------------------------------------
+let tokenCdse: { valor: string; vence: number } | null = null;
+const obtenerTokenCdse = async (): Promise<string> => {
+  if (tokenCdse && Date.now() < tokenCdse.vence) return tokenCdse.valor;
+  const id = limpiarEnv(process.env.COPERNICUS_CLIENT_ID);
+  const secret = limpiarEnv(process.env.COPERNICUS_CLIENT_SECRET);
+  if (!id || !secret) throw new Error("Faltan COPERNICUS_CLIENT_ID / COPERNICUS_CLIENT_SECRET en el servidor.");
+  const body = new URLSearchParams({ grant_type: "client_credentials", client_id: id, client_secret: secret });
+  const r = await fetch("https://identity.dataspace.copernicus.eu/auth/realms/CDSE/protocol/openid-connect/token", {
+    method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body
+  });
+  if (!r.ok) throw new Error(`Copernicus rechazó las credenciales (HTTP ${r.status}).`);
+  const d: any = await r.json();
+  tokenCdse = { valor: d.access_token, vence: Date.now() + Math.max(60, (d.expires_in || 600) - 60) * 1000 };
+  return tokenCdse.valor;
+};
+
+const RAMPA = (stops: [number, number[]][]) => `
+function rampa(v){
+  const s=${JSON.stringify(stops)};
+  if(v<=s[0][0])return s[0][1];
+  for(let i=1;i<s.length;i++){ if(v<=s[i][0]){ const t=(v-s[i-1][0])/(s[i][0]-s[i-1][0]); const a=s[i-1][1], b=s[i][1]; return [a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t]; } }
+  return s[s.length-1][1];
+}`;
+
+const CAPAS_IMAGEN: Record<string, { coleccion: string; dias: number; filtro?: any; procesamiento?: any; mosaico?: string; script: string }> = {
+  color: {
+    coleccion: "sentinel-2-l2a", dias: 15, filtro: { maxCloudCoverage: 60 }, mosaico: "leastCC",
+    script: `//VERSION=3
+function setup(){return{input:["B02","B03","B04","dataMask"],output:{bands:4}}}
+function evaluatePixel(s){return[2.6*s.B04,2.6*s.B03,2.6*s.B02,s.dataMask]}`
+  },
+  swir: {
+    coleccion: "sentinel-2-l2a", dias: 10, filtro: { maxCloudCoverage: 80 }, mosaico: "mostRecent",
+    script: `//VERSION=3
+function setup(){return{input:["B8A","B11","B12","dataMask"],output:{bands:4}}}
+function evaluatePixel(s){return[2.5*s.B12,2.5*s.B11,2.5*s.B8A,s.dataMask]}`
+  },
+  termico: {
+    coleccion: "sentinel-3-slstr", dias: 2, mosaico: "mostRecent",
+    script: `//VERSION=3
+function setup(){return{input:["S8","dataMask"],output:{bands:4}}}
+${RAMPA([[265, [0.1, 0.15, 0.45]], [285, [0.2, 0.55, 0.8]], [300, [0.95, 0.85, 0.35]], [315, [1, 0.45, 0.1]], [330, [0.85, 0.05, 0.05]]])}
+function evaluatePixel(s){const c=rampa(s.S8);return[c[0],c[1],c[2],s.dataMask]}`
+  },
+  metano: {
+    coleccion: "sentinel-5p-l2", dias: 10, mosaico: "mostRecent",
+    script: `//VERSION=3
+function setup(){return{input:["CH4","dataMask"],output:{bands:4}}}
+${RAMPA([[1820, [0.15, 0.2, 0.55]], [1860, [0.2, 0.6, 0.75]], [1900, [0.95, 0.85, 0.35]], [1940, [1, 0.45, 0.1]], [1980, [0.8, 0.05, 0.1]]])}
+function evaluatePixel(s){const c=rampa(s.CH4);return[c[0],c[1],c[2],s.dataMask*0.85]}`
+  },
+  vegetacion: {
+    coleccion: "sentinel-2-l2a", dias: 15, filtro: { maxCloudCoverage: 60 }, mosaico: "leastCC",
+    script: `//VERSION=3
+function setup(){return{input:["B04","B08","dataMask"],output:{bands:4}}}
+${RAMPA([[-0.1, [0.55, 0.45, 0.35]], [0.1, [0.85, 0.75, 0.55]], [0.25, [0.6, 0.8, 0.35]], [0.5, [0.15, 0.6, 0.2]], [0.8, [0.0, 0.35, 0.1]]])}
+function evaluatePixel(s){const v=(s.B08-s.B04)/(s.B08+s.B04+1e-6);const c=rampa(v);return[c[0],c[1],c[2],s.dataMask]}`
+  },
+  agua: {
+    coleccion: "sentinel-2-l2a", dias: 15, filtro: { maxCloudCoverage: 60 }, mosaico: "leastCC",
+    script: `//VERSION=3
+function setup(){return{input:["B03","B08","dataMask"],output:{bands:4}}}
+${RAMPA([[-0.6, [0.12, 0.12, 0.12]], [-0.1, [0.35, 0.33, 0.3]], [0.0, [0.55, 0.8, 0.95]], [0.3, [0.1, 0.45, 0.85]], [0.6, [0.0, 0.15, 0.55]]])}
+function evaluatePixel(s){const v=(s.B03-s.B08)/(s.B03+s.B08+1e-6);const c=rampa(v);return[c[0],c[1],c[2],s.dataMask]}`
+  },
+  radar: {
+    coleccion: "sentinel-1-grd", dias: 12, mosaico: "mostRecent", filtro: { acquisitionMode: "IW" },
+    script: `//VERSION=3
+function setup(){return{input:["VV","dataMask"],output:{bands:4}}}
+function evaluatePixel(s){const v=Math.max(0,Math.log(s.VV)*0.21714724095+1);return[v,v,v*1.05,s.dataMask]}`
+  }
+};
+
+app.get("/api/imagen", async (req, res) => {
+  try {
+    const capa = String(req.query.capa || "swir");
+    const def = CAPAS_IMAGEN[capa];
+    if (!def) return res.status(400).json({ error: `Capa desconocida: ${capa}` });
+    const bbox = String(req.query.bbox || "-70.5,-39.5,-67.5,-37").split(",").map(Number);
+    if (bbox.length !== 4 || bbox.some((n) => !Number.isFinite(n))) return res.status(400).json({ error: "bbox inválido" });
+    const ancho = Math.min(1400, Math.max(200, Number(req.query.w) || 1024));
+    const alto = Math.min(1400, Math.max(200, Number(req.query.h) || 860));
+    const dias = Math.min(60, Math.max(1, Number(req.query.dias) || def.dias));
+    const hasta = new Date();
+    const desde = new Date(hasta.getTime() - dias * 24 * 3600 * 1000);
+
+    const token = await obtenerTokenCdse();
+    const cuerpo = {
+      input: {
+        bounds: { bbox, properties: { crs: "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } },
+        data: [{
+          type: def.coleccion,
+          dataFilter: { timeRange: { from: desde.toISOString(), to: hasta.toISOString() }, mosaickingOrder: def.mosaico, ...(def.filtro || {}) },
+          ...(def.procesamiento ? { processing: def.procesamiento } : {})
+        }]
+      },
+      output: { width: ancho, height: alto, responses: [{ identifier: "default", format: { type: "image/png" } }] },
+      evalscript: def.script
+    };
+    const r = await fetch("https://sh.dataspace.copernicus.eu/api/v1/process", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" },
+      body: JSON.stringify(cuerpo)
+    });
+    if (!r.ok) {
+      const txt = await r.text();
+      let msg = txt.slice(0, 300);
+      try { msg = JSON.parse(txt)?.error?.message || msg; } catch { /* texto plano */ }
+      return res.status(502).json({ error: `Sentinel Hub (HTTP ${r.status}): ${msg}` });
+    }
+    const buf = Buffer.from(await r.arrayBuffer());
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "public, max-age=1800");
+    res.setHeader("X-Periodo", `${desde.toISOString()}/${hasta.toISOString()}`);
+    return res.send(buf);
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message || "Error generando la imagen" });
+  }
+});
+
 app.get("/api/satellite-connection", async (req, res) => {
   const rawClientId = process.env.COPERNICUS_CLIENT_ID || "";
   const rawClientSecret = process.env.COPERNICUS_CLIENT_SECRET || "";

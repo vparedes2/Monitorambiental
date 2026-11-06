@@ -33,12 +33,12 @@ export default function Catalogo() {
   const VENTANA = 20 * 24 * 3600 * 1000;
 
   return (
-    <div className="px-4 sm:px-8 py-8 max-w-6xl">
+    <div className="px-4 sm:px-8 py-8 max-w-6xl border-t border-linea">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="titulo text-5xl font-semibold">Catálogo Copernicus</h1>
+          <h2 className="titulo text-3xl font-semibold">Pasadas recientes sobre la cuenca</h2>
           <p className="text-tenue mt-1 max-w-2xl">
-            Escenas de los satélites europeos que pasaron sobre la cuenca en los últimos 20 días. Muestra qué imágenes existen y su nubosidad; todavía no procesa los píxeles.
+            Escenas originales de Sentinel-2 y Sentinel-5P registradas en el catálogo Copernicus durante los últimos 20 días.
           </p>
         </div>
         <button onClick={cargar} disabled={cargando} className="flex items-center gap-1.5 px-3 py-2 text-sm border border-linea text-hielo hover:border-hielo disabled:opacity-60">
@@ -53,8 +53,8 @@ export default function Catalogo() {
 
       {/* Línea de tiempo de pasadas con nubosidad */}
       <section className="instrumento mt-6 p-5">
-        <h2 className="titulo text-2xl font-semibold">Pasadas y nubosidad</h2>
-        <p className="text-xs text-tenue">Cada barra es una escena Sentinel-2; su altura es el porcentaje de nubes. Las más bajas son las mejores para ver el terreno.</p>
+        <h3 className="titulo text-2xl font-semibold">Línea de tiempo de pasadas</h3>
+        <p className="text-xs text-tenue">Cada barra es una pasada de Sentinel-2 (la altura indica nubosidad); los puntos ocres son pasadas de Sentinel-5P.</p>
         <svg viewBox="0 0 600 150" className="w-full mt-4" role="img" aria-label="Escenas Sentinel-2 por fecha y nubosidad">
           <line x1="20" x2="590" y1="120" y2="120" stroke="#22405E" />
           {[0, 5, 10, 15, 20].map((d) => (
@@ -77,7 +77,7 @@ export default function Catalogo() {
             <circle key={e.id} cx={590 - ((ahora - new Date(e.datetime).getTime()) / VENTANA) * 570} cy={112} r={4} fill="#C9A46A" />
           ))}
         </svg>
-        <p className="text-xs text-tenue mt-1">Puntos ocres: pasadas de Sentinel-5P (metano).</p>
+        
       </section>
 
       <section className="mt-6 grid sm:grid-cols-2 lg:grid-cols-3 gap-4">

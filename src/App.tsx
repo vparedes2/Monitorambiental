@@ -3,7 +3,7 @@ import { Globe2, Orbit, Flame, Images, FlaskConical } from "lucide-react";
 
 const CentroMando = lazy(() => import("./screens/CentroMando"));
 const Orbitas = lazy(() => import("./screens/Orbitas"));
-const Catalogo = lazy(() => import("./screens/Catalogo"));
+const Imagenes = lazy(() => import("./screens/Imagenes"));
 const TableroDemo = lazy(() => import("./screens/TableroDemo"));
 
 class Resguardo extends React.Component<{ children: React.ReactNode; clave: string }, { error: string | null }> {
@@ -105,7 +105,7 @@ export default function App() {
           {ruta === "inicio" && <CentroMando irA={irA} />}
           {ruta === "orbitas" && <Orbitas />}
           {ruta === "focos" && <TableroDemo vista="venteos" />}
-          {ruta === "catalogo" && <Catalogo />}
+          {ruta === "catalogo" && <Imagenes />}
           {ruta === "demo" && <TableroDemo vista="general" />}
         </Suspense>
         </Resguardo>
