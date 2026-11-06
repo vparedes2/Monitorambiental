@@ -850,7 +850,152 @@ app.get("/api/localidades", async (_req, res) => {
   }
 });
 
-app.get("/api/barrido/zonas", (_req, res) => res.json(Object.values(ZONAS_BARRIDO).map(({ id, nombre, tipo }) => ({ id, nombre, tipo }))));
+// ---------------------------------------------------------------------------
+// SIG oficial de Hidrocarburos de la Provincia del Neuquén (GeoServer de la
+// Subsecretaría de Energía). Capas públicas WFS/WMS: instalaciones, venteos
+// autorizados, ductos, pozos, locaciones. Se cachean 12 h.
+// ---------------------------------------------------------------------------
+const GEOSERVER_NQN = "https://hidrocarburos.energianeuquen.gob.ar/geoserver/Hidrocarburos";
+const CAPAS_WFS_NQN = new Set(["Areas", "Concesiones", "VM_Distribucion_Fluidos", "Ductos", "Instalaciones", "Locaciones", "Lineas_de_conduccion", "Pozos", "Pozos_VM", "Puntos_medicion", "Venteos"]);
+const cacheNqn: Record<string, { t: number; data: any }> = {};
+
+const wfsNqn = async (capa: string, opciones: { props?: string[]; cql?: string; max?: number } = {}) => {
+  if (!CAPAS_WFS_NQN.has(capa)) throw new Error(`Capa desconocida: ${capa}`);
+  const p = new URLSearchParams({
+    service: "WFS", version: "1.0.0", request: "GetFeature", typeName: `Hidrocarburos:${capa}`,
+    outputFormat: "application/json", srsName: "EPSG:4326"
+  });
+  if (opciones.props?.length) p.set("propertyName", ["SHAPE", ...opciones.props].join(","));
+  if (opciones.cql) p.set("CQL_FILTER", opciones.cql);
+  if (opciones.max) p.set("maxFeatures", String(opciones.max));
+  const clave = p.toString();
+  const c = cacheNqn[clave];
+  if (c && Date.now() - c.t < 12 * 3600000) return c.data;
+  const r = await fetch(`${GEOSERVER_NQN}/ows?${clave}`, { signal: AbortSignal.timeout(45000) });
+  const txt = await r.text();
+  if (!r.ok || !txt.trim().startsWith("{")) throw new Error(`GeoServer Neuquén respondió ${r.status}: ${txt.slice(0, 160)}`);
+  const data = JSON.parse(txt);
+  cacheNqn[clave] = { t: Date.now(), data };
+  return data;
+};
+
+const limpio = (v: any) => {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim();
+  return !s || /^(n\/a|sin dato|averiguar|no especifica)$/i.test(s) ? null : s;
+};
+const numAr = (v: any) => {
+  const s = limpio(v);
+  if (!s) return null;
+  const n = Number(s.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(n) ? n : null;
+};
+const fechaIso = (v: any) => (v ? String(v).slice(0, 10) : null);
+const recortar = (fc: any, mapa: (p: any) => any) => ({
+  type: "FeatureCollection",
+  features: (fc.features || []).filter((f: any) => f.geometry).map((f: any) => ({ type: "Feature", id: f.id, geometry: f.geometry, properties: mapa(f.properties || {}) }))
+});
+
+const CAPAS_NQN: Record<string, () => Promise<any>> = {
+  instalaciones: async () => recortar(await wfsNqn("Instalaciones"), (p) => ({
+    id: limpio(p.ID_INST), nombre: limpio(p.NOMBRE) ?? limpio(p.INSTALACIO), sigla: limpio(p.INSTALACIO), tipo: limpio(p.TIPO_INST),
+    area: limpio(p.AREA), operador: limpio(p.OPERADOR_I), estado: limpio(p.ESTADO),
+    venteo: limpio(p.VENTEO), sistema_venteo: limpio(p.SISTEMA_VE), stack_frio: limpio(p.STACK_FRIO), vru: limpio(p.CAP_VRU),
+    gas_diseno: numAr(p.Q_DISEÑO_G), gas_actual: numAr(p.Q_ACTUAL_G), petroleo_diseno: numAr(p.Q_DISEÑO_P), petroleo_actual: numAr(p.Q_ACTUAL_P),
+    tanques: numAr(p.CANT_TANQU), acta: limpio(p.ACTA), observaciones: limpio(p.OBSERVACIO)
+  })),
+  venteos: async () => recortar(await wfsNqn("Venteos"), (p) => ({
+    expediente: limpio(p.N_EXPEDIEN), empresa: limpio(p.EMPRESA), area: limpio(p.AREA), instalacion: limpio(p["INSTALACIÓ"] ?? p.INSTALACIO),
+    motivo: limpio(p.MOTIVO), disposicion: limpio(p.DISPOSICIO), permiso: fechaIso(p.PERMISO_DA), inicio: fechaIso(p.FECHA_INIC), vencimiento: fechaIso(p.FECHA_VENC),
+    m3_dia_autorizado: typeof p.m3_dia_AUT === "number" ? p.m3_dia_AUT : numAr(p.m3_dia_AUT), promedio_venteado: p.PROM_VENTE ?? null
+  })),
+  ductos: async () => recortar(await wfsNqn("Ductos"), (p) => ({
+    id: limpio(p.ID_DUCTO), nombre: limpio(p.NOMBRE), fluido: limpio(p.FLUIDO), tipo: limpio(p.TIPO), operador: limpio(p.OPERADOR),
+    diametro_pulg: p.DIAMETRO ?? null, longitud_km: p.DISTANCIA ?? null, estado: limpio(p.ESTADO), desde: limpio(p.DESDE), hasta: limpio(p.HASTA)
+  }))
+};
+
+app.get("/api/neuquen/capa/:capa", async (req, res) => {
+  const obtener = CAPAS_NQN[req.params.capa];
+  if (!obtener) return res.status(404).json({ error: "Capa no disponible" });
+  try {
+    const data = await obtener();
+    res.setHeader("Cache-Control", "public, s-maxage=43200, stale-while-revalidate=86400");
+    return res.json({ fuente: "SIG Hidrocarburos, Subsecretaría de Energía de la Provincia del Neuquén", url: GEOSERVER_NQN, consultado_utc: new Date().toISOString(), ...data });
+  } catch (e: any) {
+    return res.status(502).json({ error: e.message });
+  }
+});
+
+// Consulta directa a una capa (solo lectura, para análisis y filtros)
+app.get("/api/neuquen/wfs/:capa", async (req, res) => {
+  try {
+    const props = typeof req.query.props === "string" ? req.query.props.split(",").filter(Boolean) : undefined;
+    const cql = typeof req.query.cql === "string" ? req.query.cql : undefined;
+    const max = Math.min(5000, Number(req.query.max) || 1000);
+    const data = await wfsNqn(req.params.capa, { props, cql, max });
+    res.setHeader("Cache-Control", "public, s-maxage=43200");
+    return res.json(data);
+  } catch (e: any) {
+    return res.status(502).json({ error: e.message });
+  }
+});
+
+// Mosaicos WMS (locaciones, pozos, líneas de conducción, concesiones) vía el servidor
+const CAPAS_WMS_NQN = new Set(["Locaciones", "Pozos", "Pozos_VM", "Lineas_de_conduccion", "Concesiones", "Areas", "Ductos", "Instalaciones"]);
+app.get("/api/neuquen/wms", async (req, res) => {
+  const capa = String(req.query.capa || "");
+  const bbox = String(req.query.bbox || "");
+  if (!CAPAS_WMS_NQN.has(capa) || !/^-?[\d.]+,-?[\d.]+,-?[\d.]+,-?[\d.]+$/.test(bbox)) return res.status(400).end();
+  const p = new URLSearchParams({
+    service: "WMS", version: "1.1.1", request: "GetMap", layers: `Hidrocarburos:${capa}`, styles: "",
+    format: "image/png", transparent: "true", srs: "EPSG:3857", bbox, width: "256", height: "256"
+  });
+  try {
+    const r = await fetch(`${GEOSERVER_NQN}/wms?${p}`, { signal: AbortSignal.timeout(25000) });
+    const buf = Buffer.from(await r.arrayBuffer());
+    if (!r.ok || !(r.headers.get("content-type") || "").startsWith("image/")) return res.status(502).end();
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "public, max-age=86400, s-maxage=604800");
+    return res.send(buf);
+  } catch {
+    return res.status(504).end();
+  }
+});
+
+// Focos FIRMS con ventana elegible (1 a 10 días), para cruces de más largo plazo
+const cacheFirmsDias: Record<number, { t: number; data: any }> = {};
+app.get("/api/firms", async (req, res) => {
+  const dias = Math.max(1, Math.min(10, Math.round(Number(req.query.dias) || 2)));
+  const mapKey = limpiarEnv(process.env.FIRMS_MAP_KEY);
+  if (!mapKey) return res.json({ estado: "sin_clave", dias, focos: [] });
+  const c = cacheFirmsDias[dias];
+  if (c && Date.now() - c.t < 15 * 60000) return res.json(c.data);
+  const area = `${BBOX_CUENCA.west},${BBOX_CUENCA.south},${BBOX_CUENCA.east},${BBOX_CUENCA.north}`;
+  const focos: any[] = [];
+  const porFuente: Record<string, number | string> = {};
+  await Promise.all(FIRMS_SOURCES.map(async ({ source, sensor }) => {
+    try {
+      const r = await fetch(`https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(mapKey)}/${source}/${area}/${dias}`, { signal: AbortSignal.timeout(40000) });
+      const txt = await r.text();
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const lista = parseFirmsCsv(txt, sensor);
+      porFuente[source] = lista.length;
+      focos.push(...lista.map((d: any) => ({
+        id: d.id_deteccion, lat: d.latitud_satelital, lon: d.longitud_satelital, frp: d.frp_mw, fecha: d.fecha_hora_utc,
+        sensor: d.sensor, confianza: d.confianza_deteccion, banda: d.banda_espectral
+      })));
+    } catch (e: any) {
+      porFuente[source] = `error: ${e.message}`;
+    }
+  }));
+  const ok = Object.values(porFuente).some((v) => typeof v === "number");
+  const data = { estado: ok ? "ok" : "error", dias, consultado_utc: new Date().toISOString(), por_fuente: porFuente, focos };
+  if (ok) cacheFirmsDias[dias] = { t: Date.now(), data };
+  return res.json(data);
+});
+
+app.get("/api/barrido/zonas",(_req, res) => res.json(Object.values(ZONAS_BARRIDO).map(({ id, nombre, tipo }) => ({ id, nombre, tipo }))));
 app.get("/api/barrido/rio-anelo", (_req, res) => handlerBarrido("anelo", res));
 app.get("/api/barrido/:zona", (req, res) => handlerBarrido(req.params.zona, res));
 
