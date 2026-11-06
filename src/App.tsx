@@ -10,6 +10,11 @@ const TableroDemo = lazy(() => import("./screens/TableroDemo"));
 class Resguardo extends React.Component<{ children: React.ReactNode; clave: string }, { error: string | null }> {
   state = { error: null as string | null };
   static getDerivedStateFromError(e: Error) { return { error: e.message }; }
+  componentDidCatch(e: Error) {
+    if (/dynamically imported module|Importing a module script|module script|ChunkLoadError|Failed to fetch/i.test(e.message)) {
+      (window as any).recargarPorVersionNueva?.();
+    }
+  }
   componentDidUpdate(prev: { clave: string }) { const self = this as any; if (prev.clave !== self.props.clave && self.state.error) self.setState({ error: null }); }
   render() {
     if (this.state.error) {
