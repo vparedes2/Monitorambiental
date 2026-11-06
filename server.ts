@@ -369,7 +369,7 @@ app.get("/api/satellite-connection", async (req, res) => {
       `&$orderby=${encodeURIComponent("ContentDate/Start desc")}&$top=${top}&$expand=Attributes&$expand=Assets`;
 
     const [s2Response, s5pResponse] = await Promise.all([
-      fetch(odata("Collection/Name eq 'SENTINEL-2' and contains(Name,'MSIL2A')", 4), { headers }).catch(() => null),
+      fetch(odata("Collection/Name eq 'SENTINEL-2' and contains(Name,'MSIL2A')", 16), { headers }).catch(() => null),
       fetch(odata("Collection/Name eq 'SENTINEL-5P' and contains(Name,'L2__CH4___')", 2), { headers }).catch(() => null)
     ]);
 

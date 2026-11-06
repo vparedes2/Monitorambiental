@@ -85,7 +85,7 @@ export default function Catalogo() {
         {!cargando && escenas.length === 0 && (
           <p className="text-tenue">No llegaron escenas. Revisá la conexión o volvé a intentar con Actualizar.</p>
         )}
-        {escenas.map((e) => (
+        {escenas.slice(0, 9).map((e) => (
           <article key={e.id} className="instrumento overflow-hidden">
             <div className="aspect-[4/3] bg-noche">
               {e.thumbnailUrl ? (
