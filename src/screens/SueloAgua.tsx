@@ -34,6 +34,16 @@ interface Instalacion {
   longitud_oficial: number;
 }
 
+interface ResultadoDerrame {
+  tipo: "suelo" | "agua";
+  nivel: Nivel;
+  lectura: string;
+  area_candidata_m2: number;
+  area_analizada_m2: number;
+  periodo: { desde: string; hasta: string; corte: string | null };
+  metodo: string;
+}
+
 const COLOR_NIVEL: Record<Nivel, string> = { alerta: "#FF5A3D", observar: "#F2C14E", normal: "#7FD6A0", sin_datos: "#8BA0B6" };
 const TEXTO_NIVEL: Record<Nivel, string> = { alerta: "Alerta", observar: "Observar", normal: "Sin cambios", sin_datos: "Sin datos" };
 
@@ -56,6 +66,41 @@ export default function SueloAgua() {
   const [catastro, setCatastro] = useState<Instalacion[]>([]);
   const [lote, setLote] = useState<{ inst: Instalacion; nivel: Nivel | "error"; detalle?: string }[]>([]);
   const [loteCorriendo, setLoteCorriendo] = useState(false);
+  const [modo, setModo] = useState<"cambios" | "derrames">("cambios");
+  const [tipoDerrame, setTipoDerrame] = useState<"suelo" | "agua">("suelo");
+  const [resDerrame, setResDerrame] = useState<ResultadoDerrame | null>(null);
+
+  const analizarDerrame = async () => {
+    if (!punto) return;
+    const map = mapRef.current;
+    if (map && map.getZoom() < 12.5) map.flyTo({ center: [punto.lon, punto.lat], zoom: 13.5, duration: 1200 });
+    setCargando(true);
+    setError(null);
+    setResDerrame(null);
+    try {
+      const r = await fetch(`/api/derrames?tipo=${tipoDerrame}&lat=${punto.lat.toFixed(5)}&lon=${punto.lon.toFixed(5)}&radio=${radio}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || `Error ${r.status}`);
+      setResDerrame(d);
+      // Capa con los píxeles candidatos
+      const img = await fetch(d.imagen.url);
+      if (img.ok && map) {
+        const url = URL.createObjectURL(await img.blob());
+        const [w, so, e, n] = d.imagen.bbox;
+        const coords: [[number, number], [number, number], [number, number], [number, number]] = [[w, n], [e, n], [e, so], [w, so]];
+        const src = map.getSource("derrame-img") as maplibregl.ImageSource | undefined;
+        if (src) src.updateImage({ url, coordinates: coords });
+        else {
+          map.addSource("derrame-img", { type: "image", url, coordinates: coords });
+          map.addLayer({ id: "derrame-img", type: "raster", source: "derrame-img", paint: { "raster-opacity": 1, "raster-resampling": "nearest" } });
+        }
+      }
+    } catch (e: any) {
+      setError(e.message);
+    } finally {
+      setCargando(false);
+    }
+  };
 
   useEffect(() => {
     fetch("/api/geoportal/instalaciones").then((r) => r.json()).then((d) => setCatastro(d.instalaciones || [])).catch(() => {});
@@ -162,6 +207,32 @@ export default function SueloAgua() {
           </p>
         </div>
 
+        <div className="px-5 pt-4 flex gap-1" role="tablist" aria-label="Tipo de análisis">
+          {([["cambios", "Cambios de suelo y agua"], ["derrames", "Derrames de hidrocarburo"]] as const).map(([id, txt]) => (
+            <button key={id} role="tab" aria-selected={modo === id} onClick={() => { setModo(id); setError(null); }}
+              className={`flex-1 px-3 py-2 text-sm border-b-2 ${modo === id ? "border-hielo text-hielo" : "border-linea text-tenue"}`}>{txt}</button>
+          ))}
+        </div>
+
+        {modo === "derrames" && (
+          <div className="px-5 pt-4 space-y-3">
+            <div className="grid grid-cols-2 gap-2">
+              {([["suelo", "En suelo", "Sentinel-2, 20 m"], ["agua", "En agua", "Radar Sentinel-1, 10 m"]] as const).map(([id, t, sub]) => (
+                <button key={id} onClick={() => setTipoDerrame(id)} aria-pressed={tipoDerrame === id}
+                  className={`text-left px-3 py-2 border ${tipoDerrame === id ? "border-llama" : "border-linea"}`}>
+                  <span className={`block font-medium ${tipoDerrame === id ? "text-llama" : ""}`}>{t}</span>
+                  <span className="block text-xs text-tenue">{sub}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-tenue leading-relaxed">
+              {tipoDerrame === "suelo"
+                ? "Busca píxeles que se oscurecieron bruscamente en los últimos 20 días y quedaron oscuros, como el suelo empapado de crudo. Detecta manchas desde unos 800 m²."
+                : "Elegí un punto sobre el río, embalse o una pileta. Busca zonas del agua que en la última pasada de radar aparecen mucho más lisas (oscuras) que lo habitual, como ocurre con una película de hidrocarburo."}
+            </p>
+          </div>
+        )}
+
         <div className="p-5 border-b border-linea space-y-4">
           <div>
             <p className="text-xs text-tenue mb-1.5">Radio del área</p>
@@ -172,15 +243,16 @@ export default function SueloAgua() {
               ))}
             </div>
           </div>
-          <button onClick={() => analizar()} disabled={!punto || cargando}
-            className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-hielo text-noche font-semibold disabled:opacity-50">
+          <button onClick={() => (modo === "cambios" ? analizar() : analizarDerrame())} disabled={!punto || cargando}
+            className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 font-semibold disabled:opacity-50 text-noche ${modo === "cambios" ? "bg-hielo" : "bg-llama"}`}>
             {cargando && <Loader2 className="w-4 h-4 animate-spin" />}
-            {cargando ? "Analizando imágenes…" : punto ? "Analizar este punto" : "Elegí un punto en el mapa"}
+            {cargando ? "Analizando imágenes…" : !punto ? "Elegí un punto en el mapa" : modo === "cambios" ? "Analizar este punto" : `Buscar derrame ${tipoDerrame === "suelo" ? "en suelo" : "en agua"}`}
           </button>
           {error && <p className="text-xs text-llama">{error}</p>}
         </div>
 
-        {res && <Informe res={res} serie={serie} setSerie={setSerie} />}
+        {modo === "cambios" && res && <Informe res={res} serie={serie} setSerie={setSerie} />}
+        {modo === "derrames" && resDerrame && <InformeDerrame r={resDerrame} />}
 
         <div className="p-5 border-t border-linea">
           <h2 className="titulo text-2xl font-semibold flex items-center gap-2"><ListChecks className="w-5 h-5 text-lutita" /> Instalaciones del catastro</h2>
@@ -286,5 +358,38 @@ function Grafico({ base, reciente, k }: { base: any[]; reciente: any[]; k: strin
       <path d={linea(reciente)} fill="none" stroke="#8FE3F0" strokeWidth="2" />
       {reciente.filter((f) => f[k] !== null).map((f) => <circle key={f.fecha} cx={x(f, reciente)} cy={y(f[k])} r="2.5" fill="#8FE3F0" />)}
     </svg>
+  );
+}
+
+function InformeDerrame({ r }: { r: ResultadoDerrame }) {
+  return (
+    <div className="p-5 space-y-3">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="titulo text-2xl font-semibold">{r.tipo === "suelo" ? "Derrame en suelo" : "Mancha en agua"}</h2>
+        <span className="px-2.5 py-1 text-sm font-semibold" style={{ background: COLOR_NIVEL[r.nivel], color: "#0A1628" }}>
+          {r.nivel === "normal" ? "Sin indicios" : TEXTO_NIVEL[r.nivel]}
+        </span>
+      </div>
+      <div className="flex gap-6">
+        <div>
+          <p className="num text-3xl text-llama leading-none">{r.area_candidata_m2.toLocaleString("es-AR")}</p>
+          <p className="text-xs text-tenue mt-1">m² candidatos</p>
+        </div>
+        <div>
+          <p className="num text-xl leading-none">{(r.area_analizada_m2 / 10000).toLocaleString("es-AR", { maximumFractionDigits: 1 })}</p>
+          <p className="text-xs text-tenue mt-1">ha analizadas {r.tipo === "agua" ? "(solo agua)" : "(con datos)"}</p>
+        </div>
+      </div>
+      <p className="text-sm leading-snug">{r.lectura}</p>
+      <div className="flex flex-wrap gap-4 text-xs text-tenue">
+        <span className="flex items-center gap-1.5"><span className="w-3 h-3" style={{ background: "#FF2619" }} /> candidato</span>
+        {r.tipo === "suelo" && <span className="flex items-center gap-1.5"><span className="w-3 h-3" style={{ background: "#FFB333" }} /> oscurecimiento leve</span>}
+        {r.tipo === "agua" && <span className="flex items-center gap-1.5"><span className="w-3 h-3" style={{ background: "#2673D9" }} /> agua analizada</span>}
+      </div>
+      <p className="num text-[11px] text-tenue">
+        Período {r.periodo.desde} a {r.periodo.hasta}{r.periodo.corte ? `, comparando antes y después del ${r.periodo.corte}` : ""}.
+      </p>
+      <p className="text-[11px] text-tenue leading-relaxed">{r.metodo} Es un indicio a verificar en campo, no una confirmación.</p>
+    </div>
   );
 }

@@ -596,6 +596,201 @@ app.get("/api/analisis/suelo-agua", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Detección de derrames (candidatos) — análisis por píxel en el tiempo.
+//  * suelo: Sentinel-2. Píxel que se oscureció >30% en los últimos 20 días
+//    respecto de los 70 días previos, quedó oscuro y no es agua ni sombra.
+//  * agua:  Sentinel-1 (radar). Píxel de agua permanente cuya última pasada
+//    es ≥4 dB más oscura que su mediana: el aceite alisa la superficie.
+// ---------------------------------------------------------------------------
+const scriptDerrameSuelo = (corteIso: string, modo: "imagen" | "stats") => `//VERSION=3
+function setup(){return{input:[{bands:["B02","B03","B04","B08","B11","B12","SCL","dataMask"]}],
+output:${modo === "imagen" ? '[{id:"default",bands:4}]' : '[{id:"det",bands:3,sampleType:"FLOAT32"},{id:"dataMask",bands:1}]'},mosaicking:"ORBIT"}}
+const CORTE=Date.parse("${corteIso}");
+function med(a){if(!a.length)return null;a.sort(function(x,y){return x-y});var m=Math.floor(a.length/2);return a.length%2?a[m]:(a[m-1]+a[m])/2}
+function evaluatePixel(samples,scenes){
+  var antes=[],ahora=[],nvA=[],nvH=[],nwH=[];
+  for(var i=0;i<samples.length;i++){
+    var s=samples[i]; if(!s.dataMask)continue;
+    if([0,1,2,3,8,9,10,11].indexOf(s.SCL)>=0)continue;
+    var t=Date.parse(scenes.orbits[i].dateFrom);
+    var br=(s.B02+s.B03+s.B04+s.B08+s.B11+s.B12)/6;
+    var nv=(s.B08-s.B04)/(s.B08+s.B04+1e-6);
+    if(t<CORTE){antes.push(br);nvA.push(nv)}else{ahora.push(br);nvH.push(nv);nwH.push((s.B03-s.B08)/(s.B03+s.B08+1e-6))}
+  }
+  var a=med(antes),h=med(ahora);
+  var valido=(a!==null&&h!==null)?1:0;
+  var cand=0,caida=0;
+  if(valido){
+    caida=(a-h)/(a+1e-6);
+    var agua=med(nwH)>0;
+    var perdioVeg=(med(nvA)-med(nvH))>0.02;
+    if(!agua && caida>0.30 && h<0.12 && (perdioVeg || med(nvH)<0.15)) cand=1;
+  }
+  ${modo === "imagen"
+    ? "if(cand)return[1,0.15,0.1,0.95]; if(valido&&caida>0.2&&h<0.15)return[1,0.7,0.2,0.55]; return[0,0,0,0];"
+    : "return {det:[cand,valido,caida], dataMask:[valido]};"}
+}`;
+
+const scriptDerrameAgua = (modo: "imagen" | "stats") => `//VERSION=3
+function setup(){return{input:[{bands:["VV","dataMask"]}],
+output:${modo === "imagen" ? '[{id:"default",bands:4}]' : '[{id:"det",bands:3,sampleType:"FLOAT32"},{id:"dataMask",bands:1}]'},mosaicking:"ORBIT"}}
+function med(a){if(!a.length)return null;a.sort(function(x,y){return x-y});var m=Math.floor(a.length/2);return a.length%2?a[m]:(a[m-1]+a[m])/2}
+function evaluatePixel(samples,scenes){
+  var vals=[],ult=null,tUlt=-1;
+  for(var i=0;i<samples.length;i++){
+    var s=samples[i]; if(!s.dataMask||!(s.VV>0))continue;
+    var db=10*Math.log(s.VV)/Math.LN10;
+    var t=Date.parse(scenes.orbits[i].dateFrom);
+    vals.push(db);
+    if(t>tUlt){tUlt=t;ult=db}
+  }
+  if(vals.length<3){ ${modo === "imagen" ? "return[0,0,0,0];" : "return {det:[0,0,0], dataMask:[0]};"} }
+  var m=med(vals.slice());
+  var agua=m<-18?1:0;
+  var anom=ult-m;
+  var cand=(agua&&anom<=-4&&ult<-21)?1:0;
+  ${modo === "imagen"
+    ? "if(cand)return[1,0.15,0.1,0.95]; if(agua)return[0.15,0.45,0.85,0.35]; return[0,0,0,0];"
+    : "return {det:[cand,agua,anom], dataMask:[agua]};"}
+}`;
+
+const configDerrame = (tipo: "suelo" | "agua", radioM: number) => {
+  const ahora = new Date();
+  if (tipo === "suelo") {
+    const desde = new Date(ahora.getTime() - 90 * 86400000);
+    const corte = new Date(ahora.getTime() - 20 * 86400000);
+    return {
+      desde, hasta: ahora, corte, intervalo: "P90D", resM: 20,
+      dato: { type: "sentinel-2-l2a", dataFilter: { maxCloudCoverage: 60 } },
+      script: (m: "imagen" | "stats") => scriptDerrameSuelo(corte.toISOString(), m)
+    };
+  }
+  const desde = new Date(ahora.getTime() - 36 * 86400000);
+  return {
+    desde, hasta: ahora, corte: null, intervalo: "P36D", resM: 10,
+    dato: { type: "sentinel-1-grd", dataFilter: { acquisitionMode: "IW", polarization: "DV" } },
+    script: (m: "imagen" | "stats") => scriptDerrameAgua(m)
+  };
+};
+
+const bboxCirculo = (lat: number, lon: number, radioM: number) => {
+  const dLat = radioM / 110540;
+  const dLon = radioM / (111320 * Math.cos((lat * Math.PI) / 180));
+  return [lon - dLon, lat - dLat, lon + dLon, lat + dLat];
+};
+
+app.get("/api/derrames", async (req, res) => {
+  try {
+    const tipo = req.query.tipo === "agua" ? "agua" : "suelo";
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    const radio = Math.min(3000, Math.max(100, Number(req.query.radio) || 500));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ error: "Faltan lat y lon" });
+    const cfg = configDerrame(tipo, radio);
+    const lado = Math.round(Math.min(tipo === "agua" ? 400 : 300, Math.max(20, (2 * radio) / cfg.resM)));
+    const pxM = (2 * radio) / lado;
+    const token = await obtenerTokenCdse();
+    const cuerpo = {
+      input: { bounds: { geometry: circuloGeo(lat, lon, radio), properties: { crs: "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } }, data: [cfg.dato] },
+      aggregation: {
+        timeRange: { from: cfg.desde.toISOString(), to: cfg.hasta.toISOString() },
+        aggregationInterval: { of: cfg.intervalo },
+        width: lado, height: lado,
+        evalscript: cfg.script("stats")
+      },
+      calculations: { default: {} }
+    };
+    const r = await fetch("https://sh.dataspace.copernicus.eu/api/v1/statistics", {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(cuerpo)
+    });
+    const txt = await r.text();
+    if (!r.ok) {
+      let msg = txt.slice(0, 300);
+      try { msg = JSON.parse(txt)?.error?.message || msg; } catch { /* texto */ }
+      return res.status(502).json({ error: `Sentinel Hub (HTTP ${r.status}): ${msg}` });
+    }
+    const d = JSON.parse(txt);
+    const it = (d.data || []).find((x: any) => !x.error);
+    if (!it) {
+      const err = (d.data || [])[0]?.error?.message;
+      return res.status(502).json({ error: err ? `Sentinel Hub: ${err}` : "No hubo imágenes en el período." });
+    }
+    const bandas = it.outputs?.det?.bands || {};
+    const claves = Object.keys(bandas).sort((a, b) => Number(a.replace(/\D/g, "")) - Number(b.replace(/\D/g, "")));
+    const stCand = bandas[claves[0]]?.stats || {};
+    const validos = (stCand.sampleCount || 0) - (stCand.noDataCount || 0);
+    const frac = typeof stCand.mean === "number" && Number.isFinite(stCand.mean) ? stCand.mean : 0;
+    const areaCand = Math.round(frac * validos * pxM * pxM);
+    const areaBase = Math.round(validos * pxM * pxM);
+
+    let nivel: "normal" | "observar" | "alerta" | "sin_datos" = "normal";
+    let lectura = "";
+    if (validos < 5) {
+      nivel = "sin_datos";
+      lectura = tipo === "agua"
+        ? "No se encontró agua permanente en el área o hubo menos de 3 pasadas de radar. Elegí un punto sobre el río, embalse o pileta."
+        : "No hubo suficientes imágenes sin nubes antes y después para comparar.";
+    } else if (tipo === "suelo") {
+      if (areaCand >= 2000) { nivel = "alerta"; lectura = `Hay ${areaCand.toLocaleString("es-AR")} m² de suelo que se oscureció bruscamente en los últimos 20 días. Patrón compatible con hidrocarburo derramado; también puede ser suelo removido, humedad o una superficie nueva (asfalto, membrana). Verificar en campo.`; }
+      else if (areaCand >= 800) { nivel = "observar"; lectura = `Área chica (${areaCand.toLocaleString("es-AR")} m²) con oscurecimiento reciente. Revisar con la imagen en color natural.`; }
+      else { lectura = "Sin oscurecimiento brusco del suelo en los últimos 20 días."; }
+    } else {
+      if (areaCand >= 10000) { nivel = "alerta"; lectura = `En la última pasada de radar hay ${(areaCand / 10000).toFixed(1)} ha de agua anormalmente lisa (oscura). Patrón compatible con una película de hidrocarburo; también puede ser agua sin viento o algas. Verificar.`; }
+      else if (areaCand >= 2000) { nivel = "observar"; lectura = `Mancha oscura chica (${areaCand.toLocaleString("es-AR")} m²) en el agua en la última pasada de radar.`; }
+      else { lectura = "Sin manchas anómalas en el agua en la última pasada de radar."; }
+    }
+
+    const bbox = bboxCirculo(lat, lon, radio);
+    return res.json({
+      tipo, punto: { lat, lon }, radio_m: radio, nivel, lectura,
+      area_candidata_m2: areaCand,
+      area_analizada_m2: areaBase,
+      periodo: { desde: cfg.desde.toISOString().slice(0, 10), hasta: cfg.hasta.toISOString().slice(0, 10), corte: cfg.corte ? cfg.corte.toISOString().slice(0, 10) : null },
+      imagen: { url: `/api/derrames/imagen?tipo=${tipo}&lat=${lat}&lon=${lon}&radio=${radio}`, bbox },
+      metodo: tipo === "suelo"
+        ? "Sentinel-2 L2A (20 m). Por cada píxel: mediana de brillo de los 70 días previos vs. los últimos 20 días, sin nubes ni sombras (SCL). Candidato si cae >30%, queda oscuro (<0,12), no es agua y perdió o no tenía vegetación. Mancha mínima detectable ≈ 800 m²."
+        : "Sentinel-1 GRD IW (10 m, VV). Agua permanente = mediana < −18 dB en 36 días. Candidato si la última pasada es ≥4 dB más oscura que su mediana y < −21 dB. Requiere ≥3 pasadas."
+    });
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message || "Error en la detección" });
+  }
+});
+
+app.get("/api/derrames/imagen", async (req, res) => {
+  try {
+    const tipo = req.query.tipo === "agua" ? "agua" : "suelo";
+    const lat = Number(req.query.lat);
+    const lon = Number(req.query.lon);
+    const radio = Math.min(3000, Math.max(100, Number(req.query.radio) || 500));
+    const cfg = configDerrame(tipo, radio);
+    const lado = Math.round(Math.min(800, Math.max(64, (2 * radio) / cfg.resM)));
+    const token = await obtenerTokenCdse();
+    const cuerpo = {
+      input: {
+        bounds: { bbox: bboxCirculo(lat, lon, radio), properties: { crs: "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } },
+        data: [{ ...cfg.dato, dataFilter: { ...cfg.dato.dataFilter, timeRange: { from: cfg.desde.toISOString(), to: cfg.hasta.toISOString() } } }]
+      },
+      output: { width: lado, height: lado, responses: [{ identifier: "default", format: { type: "image/png" } }] },
+      evalscript: cfg.script("imagen")
+    };
+    const r = await fetch("https://sh.dataspace.copernicus.eu/api/v1/process", {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" }, body: JSON.stringify(cuerpo)
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      let msg = t.slice(0, 300);
+      try { msg = JSON.parse(t)?.error?.message || msg; } catch { /* texto */ }
+      return res.status(502).json({ error: `Sentinel Hub (HTTP ${r.status}): ${msg}` });
+    }
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "public, max-age=1800");
+    return res.send(Buffer.from(await r.arrayBuffer()));
+  } catch (e: any) {
+    return res.status(500).json({ error: e.message || "Error generando la imagen" });
+  }
+});
+
 app.get("/api/satellite-connection", async (req, res) => {
   const rawClientId = process.env.COPERNICUS_CLIENT_ID || "";
   const rawClientSecret = process.env.COPERNICUS_CLIENT_SECRET || "";
