@@ -272,7 +272,7 @@ export default function SueloAgua() {
         </div>
 
         <div className="px-5 pt-4 flex gap-1" role="tablist" aria-label="Tipo de análisis">
-          {([["cambios", "Cambios"], ["derrames", "Derrames"], ["barrido", "Barrido río Añelo"]] as const).map(([id, txt]) => (
+          {([["cambios", "Cambios"], ["derrames", "Derrames"], ["barrido", "Barridos"]] as const).map(([id, txt]) => (
             <button key={id} role="tab" aria-selected={modo === id} onClick={() => { setModo(id); setError(null); }}
               className={`flex-1 px-3 py-2 text-sm border-b-2 ${modo === id ? "border-hielo text-hielo" : "border-linea text-tenue"}`}>{txt}</button>
           ))}
@@ -481,7 +481,14 @@ function BotonPdf({ onClick }: { onClick: () => void }) {
 // ---------------------------------------------------------------------------
 // Barrido del río Neuquén en la zona de Añelo
 // ---------------------------------------------------------------------------
-interface Tramo { n: number; km_desde_anelo: number; lat: number; lon: number }
+interface Tramo { n: number; km_desde_ref?: number; km_costa?: number; lat: number; lon: number }
+
+const ZONAS = [
+  { id: "anelo", corto: "Río Neuquén, Añelo" },
+  { id: "rincon", corto: "Río Colorado, Rincón de los Sauces" },
+  { id: "marimenuco", corto: "Costa lago Mari Menuco" },
+  { id: "barreales", corto: "Costa lago Los Barreales" }
+];
 interface ResTramo {
   agua?: Indicador;
   humedad?: Indicador;
@@ -491,6 +498,8 @@ interface ResTramo {
 }
 
 function BarridoRio({ map }: { map: MLMap }) {
+  const [zona, setZona] = useState("anelo");
+  const [meta, setMeta] = useState<{ nombre: string; tipo: "rio" | "costa"; referencia: { nombre: string }; perimetro_km?: number } | null>(null);
   const [tramos, setTramos] = useState<Tramo[]>([]);
   const [res, setRes] = useState<Record<number, ResTramo>>({});
   const [corriendo, setCorriendo] = useState(false);
@@ -518,12 +527,13 @@ function BarridoRio({ map }: { map: MLMap }) {
     setCorriendo(true);
     cancelar.current = false;
     try {
-      const r = await fetch("/api/barrido/rio-anelo");
+      const r = await fetch(`/api/barrido/${zona}`);
       const d = await r.json();
       if (!r.ok) throw new Error(d.error);
       const ts: Tramo[] = d.tramos;
       setTramos(ts);
       setFuente(d.fuente);
+      setMeta({ nombre: d.nombre, tipo: d.tipo, referencia: d.referencia, perimetro_km: d.perimetro_km });
       const inicial: Record<number, ResTramo> = {};
       ts.forEach((t) => { inicial[t.n] = { nivel: "pendiente" }; });
       setRes(inicial);
@@ -564,6 +574,10 @@ function BarridoRio({ map }: { map: MLMap }) {
     }
   };
 
+  const etiqueta = (t: Tramo) =>
+    meta?.tipo === "costa"
+      ? `Punto ${t.n} de la costa (km ${t.km_costa})`
+      : `${(t.km_desde_ref ?? 0) > 0 ? "+" : ""}${t.km_desde_ref} km ${(t.km_desde_ref ?? 0) < 0 ? "aguas arriba" : "aguas abajo"} de ${meta?.referencia.nombre ?? ""}`;
   const hechos = tramos.filter((t) => res[t.n] && res[t.n].nivel !== "pendiente").length;
   const fmtPct = (i?: Indicador) => (i && i.base !== null && i.reciente !== null ? `${i.base.toFixed(1)} → ${i.reciente.toFixed(1)} %` : "N/D");
 
@@ -573,20 +587,22 @@ function BarridoRio({ map }: { map: MLMap }) {
     const alertas = tramos.filter((t) => res[t.n]?.nivel === "alerta").length;
     const observar = tramos.filter((t) => res[t.n]?.nivel === "observar").length;
     generarInformePDF({
-      titulo: "Barrido satelital del río Neuquén, zona Añelo",
-      subtitulo: `${tramos.length} tramos de 2 km a lo largo del cauce, centrados en Añelo. ${alertas} en alerta, ${observar} para observar.`,
+      titulo: `Barrido satelital: ${meta?.nombre ?? ""}`,
+      subtitulo: meta?.tipo === "costa"
+        ? `${tramos.length} puntos repartidos sobre ${meta?.perimetro_km ?? "?"} km de costa, radio 1 km. ${alertas} en alerta, ${observar} para observar.`
+        : `${tramos.length} tramos de 2 km a lo largo del cauce, centrados en ${meta?.referencia.nombre}. ${alertas} en alerta, ${observar} para observar.`,
       mapa,
       leyenda: [
         { color: COLOR_NIVEL.alerta, texto: "Alerta" }, { color: COLOR_NIVEL.observar, texto: "Observar" },
         { color: COLOR_NIVEL.normal, texto: "Sin cambios" }, { color: COLOR_NIVEL.sin_datos, texto: "Sin datos" }
       ],
       secciones: [{
-        titulo: "Resultado por tramo (oeste a este, aguas arriba a aguas abajo)",
+        titulo: meta?.tipo === "costa" ? "Resultado por punto de costa" : "Resultado por tramo (oeste a este, aguas arriba a aguas abajo)",
         tabla: {
-          columnas: ["Tramo", "km desde Añelo", "Centro (lat, lon)", "Agua superficial (año ant. → ahora)", "Humedad del suelo", "Mancha en agua (radar)", "Resultado"],
+          columnas: [meta?.tipo === "costa" ? "Punto" : "Tramo", meta?.tipo === "costa" ? "km de costa" : `km desde ${meta?.referencia.nombre ?? ""}`, "Centro (lat, lon)", "Agua superficial (año ant. → ahora)", "Humedad del suelo", "Mancha en agua (radar)", "Resultado"],
           filas: tramos.map((t) => {
             const r = res[t.n] || { nivel: "pendiente" };
-            return [t.n, `${t.km_desde_anelo > 0 ? "+" : ""}${t.km_desde_anelo}`, `${t.lat.toFixed(4)}, ${t.lon.toFixed(4)}`, fmtPct(r.agua),
+            return [t.n, meta?.tipo === "costa" ? String(t.km_costa) : `${(t.km_desde_ref ?? 0) > 0 ? "+" : ""}${t.km_desde_ref}`, `${t.lat.toFixed(4)}, ${t.lon.toFixed(4)}`, fmtPct(r.agua),
               r.humedad ? TEXTO_NIVEL[r.humedad.nivel] : "N/D", r.mancha ? (r.mancha.area ? `${r.mancha.area.toLocaleString("es-AR")} m²` : "Sin manchas") : "N/D",
               r.nivel === "pendiente" ? "Pendiente" : r.nivel === "error" ? "Error" : TEXTO_NIVEL[r.nivel]];
           })
@@ -595,23 +611,32 @@ function BarridoRio({ map }: { map: MLMap }) {
         titulo: "Hallazgos",
         texto: tramos.filter((t) => ["alerta", "observar"].includes(res[t.n]?.nivel as string)).map((t) => {
           const r = res[t.n];
-          return `Tramo ${t.n} (${t.km_desde_anelo > 0 ? "+" : ""}${t.km_desde_anelo} km): ${[r.agua?.nivel !== "normal" ? r.agua?.lectura : "", r.humedad?.nivel !== "normal" ? r.humedad?.lectura : "", r.mancha && r.mancha.nivel !== "normal" ? `Radar: ${r.mancha.area.toLocaleString("es-AR")} m² de agua anormalmente lisa.` : ""].filter(Boolean).join(" ")}`;
+          return `${etiqueta(t)}: ${[r.agua?.nivel !== "normal" ? r.agua?.lectura : "", r.humedad?.nivel !== "normal" ? r.humedad?.lectura : "", r.mancha && r.mancha.nivel !== "normal" ? `Radar: ${r.mancha.area.toLocaleString("es-AR")} m² de agua anormalmente lisa.` : ""].filter(Boolean).join(" ")}`;
         }).concat(alertas + observar === 0 ? ["Sin hallazgos en los tramos analizados."] : [])
       }],
-      metodo: `${fuente}. Cada tramo es un círculo de 1 km de radio centrado en el cauce, separados 2 km a lo largo del río. Agua superficial y humedad: Sentinel-2 L2A, últimos 60 días vs. mismo período del año anterior. Manchas en agua: Sentinel-1 radar, última pasada vs. mediana de 36 días, descontando el oscurecimiento general por viento.`,
-      archivo: nombreArchivo("barrido-rio-neuquen-anelo", "pdf")
+      metodo: `${fuente}. ${meta?.tipo === "costa" ? "Cada punto es un círculo de 1 km de radio sobre la línea de costa, repartidos en partes iguales a lo largo del perímetro." : "Cada tramo es un círculo de 1 km de radio centrado en el cauce, separados 2 km a lo largo del río."} Agua superficial y humedad: Sentinel-2 L2A, últimos 60 días vs. mismo período del año anterior. Manchas en agua: Sentinel-1 radar, última pasada vs. mediana de 36 días, descontando el oscurecimiento general por viento.`,
+      archivo: nombreArchivo(`barrido-${zona}`, "pdf")
     });
   };
 
   return (
     <div className="p-5 space-y-4">
+      <div className="grid grid-cols-2 gap-2">
+        {ZONAS.map((z) => (
+          <button key={z.id} onClick={() => setZona(z.id)} disabled={corriendo} aria-pressed={zona === z.id}
+            className={`text-left px-3 py-2 text-sm border ${zona === z.id ? "border-hielo text-hielo" : "border-linea"}`}>{z.corto}</button>
+        ))}
+      </div>
       <p className="text-sm text-tenue">
-        Recorre el cauce del río Neuquén en 20 tramos de 2 km, 10 aguas arriba y 10 aguas abajo de Añelo. En cada tramo mide agua superficial y humedad del suelo contra el año anterior y busca manchas en el agua con radar.
+        {zona === "anelo" || zona === "rincon"
+          ? "Recorre el cauce en 20 tramos de 2 km, 10 aguas arriba y 10 aguas abajo de la localidad."
+          : "Recorre la costa del embalse en 20 puntos repartidos en partes iguales."}{" "}
+        En cada uno mide agua superficial y humedad del suelo contra el año anterior y busca manchas en el agua con radar.
       </p>
       <button onClick={iniciar} disabled={corriendo}
         className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-hielo text-noche font-semibold disabled:opacity-60">
         {corriendo && <Loader2 className="w-4 h-4 animate-spin" />}
-        {corriendo ? `Analizando tramo ${Math.min(hechos + 1, tramos.length || 20)} de ${tramos.length || 20}…` : tramos.length ? "Repetir barrido" : "Iniciar barrido zona Añelo"}
+        {corriendo ? `Analizando ${Math.min(hechos + 1, tramos.length || 20)} de ${tramos.length || 20}…` : `Iniciar barrido: ${ZONAS.find((z) => z.id === zona)!.corto}`}
       </button>
       {corriendo && <button onClick={() => { cancelar.current = true; }} className="text-xs text-tenue underline">Detener</button>}
       {error && <p className="text-xs text-llama">{error}</p>}
@@ -634,7 +659,7 @@ function BarridoRio({ map }: { map: MLMap }) {
                     <span className="num text-xs w-6 text-tenue mt-0.5">{t.n}</span>
                     <span className="mt-1 w-2.5 h-2.5 rounded-full shrink-0" style={{ background: color }} />
                     <span className="flex-1 text-sm">
-                      <span className="block">{t.km_desde_anelo === 0 ? "Añelo" : `${t.km_desde_anelo > 0 ? "+" : ""}${t.km_desde_anelo} km ${t.km_desde_anelo < 0 ? "aguas arriba" : "aguas abajo"}`}</span>
+                      <span className="block">{etiqueta(t)}</span>
                       {r && r.nivel === "pendiente" && <span className="block text-xs text-tenue">Pendiente</span>}
                       {r && r.nivel === "error" && <span className="block text-xs text-llama">Error: {r.error}</span>}
                       {r && r.agua && (

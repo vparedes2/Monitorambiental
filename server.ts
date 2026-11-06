@@ -817,84 +817,157 @@ app.get("/api/derrames/imagen", async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
-// Barrido del río Neuquén en la zona de Añelo: cauce real desde OpenStreetMap,
-// 20 tramos de 2 km (10 aguas arriba y 10 aguas abajo) con Añelo como centro.
+// Barridos por zona: geometría real desde OpenStreetMap (Overpass).
+//  * ríos: 20 tramos de 2 km a lo largo del cauce, centrados en la localidad.
+//  * embalses: 20 puntos repartidos sobre la costa.
 // ---------------------------------------------------------------------------
-const ANELO_PT = { lat: -38.352, lon: -68.789 };
-let cacheCauce: { t: number; data: any } | null = null;
+interface ZonaBarrido {
+  id: string;
+  nombre: string;
+  tipo: "rio" | "costa";
+  referencia: { nombre: string; lat: number; lon: number };
+  consulta: string;
+}
+const ZONAS_BARRIDO: Record<string, ZonaBarrido> = {
+  anelo: {
+    id: "anelo", nombre: "Río Neuquén, zona Añelo", tipo: "rio",
+    referencia: { nombre: "Añelo", lat: -38.352, lon: -68.789 },
+    consulta: `way["waterway"="river"]["name"~"Neuqu",i](-38.75,-69.25,-37.95,-68.3);`
+  },
+  rincon: {
+    id: "rincon", nombre: "Río Colorado, zona Rincón de los Sauces", tipo: "rio",
+    referencia: { nombre: "Rincón de los Sauces", lat: -37.392, lon: -68.929 },
+    consulta: `way["waterway"="river"]["name"~"Colorado",i](-37.8,-69.4,-37.0,-68.4);`
+  },
+  marimenuco: {
+    id: "marimenuco", nombre: "Costa del lago Mari Menuco", tipo: "costa",
+    referencia: { nombre: "Mari Menuco", lat: -38.58, lon: -68.62 },
+    consulta: `nwr["natural"="water"]["name"~"Mari Menuco",i](-38.8,-69.0,-38.35,-68.3);`
+  },
+  barreales: {
+    id: "barreales", nombre: "Costa del lago Los Barreales", tipo: "costa",
+    referencia: { nombre: "Los Barreales", lat: -38.52, lon: -68.85 },
+    consulta: `nwr["natural"="water"]["name"~"Barreales",i](-38.8,-69.2,-38.3,-68.5);`
+  }
+};
+const cacheBarrido: Record<string, { t: number; data: any }> = {};
 
-app.get("/api/barrido/rio-anelo", async (_req, res) => {
+const lineasOsm = (d: any): { lat: number; lon: number }[][] => {
+  const lineas: { lat: number; lon: number }[][] = [];
+  for (const el of d.elements || []) {
+    if (el.type === "way" && el.geometry) lineas.push(el.geometry);
+    if (el.type === "relation") {
+      for (const m of el.members || []) if (m.type === "way" && m.geometry && m.role !== "inner") lineas.push(m.geometry);
+    }
+  }
+  return lineas;
+};
+
+const muestrearRio = (lineas: { lat: number; lon: number }[][], ref: { lat: number; lon: number }) => {
+  const kx = 111320 * Math.cos((ref.lat * Math.PI) / 180);
+  const ky = 110540;
+  const pts: { x: number; y: number }[] = [];
+  for (const g of lineas) {
+    for (let i = 0; i < g.length; i++) {
+      const a = { x: (g[i].lon - ref.lon) * kx, y: (g[i].lat - ref.lat) * ky };
+      pts.push(a);
+      if (i + 1 < g.length) {
+        const b = { x: (g[i + 1].lon - ref.lon) * kx, y: (g[i + 1].lat - ref.lat) * ky };
+        const L = Math.hypot(b.x - a.x, b.y - a.y);
+        for (let t = 100; t < L; t += 100) pts.push({ x: a.x + ((b.x - a.x) * t) / L, y: a.y + ((b.y - a.y) * t) / L });
+      }
+    }
+  }
+  if (pts.length < 20) throw new Error("No se encontró el cauce en OpenStreetMap.");
+  const cerca = pts.filter((p) => Math.hypot(p.x, p.y) < 30000);
+  if (cerca.length < 10) throw new Error("El cauce encontrado queda lejos de la localidad de referencia.");
+  const mx = cerca.reduce((a, p) => a + p.x, 0) / cerca.length;
+  const my = cerca.reduce((a, p) => a + p.y, 0) / cerca.length;
+  let sxx = 0, syy = 0, sxy = 0;
+  for (const p of cerca) { sxx += (p.x - mx) ** 2; syy += (p.y - my) ** 2; sxy += (p.x - mx) * (p.y - my); }
+  const ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+  const ux = Math.cos(ang), uy = Math.sin(ang);
+  const centro = cerca.reduce((best, p) => (Math.hypot(p.x, p.y) < Math.hypot(best.x, best.y) ? p : best), cerca[0]);
+  const t0 = centro.x * ux + centro.y * uy;
+  const tramos: any[] = [];
+  for (let k = -10; k < 10; k++) {
+    const tc = t0 + (k + 0.5) * 2000;
+    const banda = pts.filter((p) => Math.abs(p.x * ux + p.y * uy - tc) <= 400);
+    if (!banda.length) continue;
+    const xs = banda.map((p) => p.x).sort((a, b) => a - b);
+    const ys = banda.map((p) => p.y).sort((a, b) => a - b);
+    tramos.push({ lat: ref.lat + ys[Math.floor(ys.length / 2)] / ky, lon: ref.lon + xs[Math.floor(xs.length / 2)] / kx });
+  }
+  // Oeste = aguas arriba en ambos ríos (corren hacia el este / sureste)
+  tramos.sort((a, b) => a.lon - b.lon).forEach((t, i) => {
+    t.n = i + 1;
+    t.km_desde_ref = (i - (tramos.length - 1) / 2) * 2;
+  });
+  return tramos;
+};
+
+const muestrearCosta = (lineas: { lat: number; lon: number }[][], n = 20) => {
+  // Perímetro acumulado de todos los bordes exteriores
+  const segs: { a: { lat: number; lon: number }; b: { lat: number; lon: number }; L: number }[] = [];
+  let total = 0;
+  for (const g of lineas) {
+    for (let i = 0; i + 1 < g.length; i++) {
+      const kx = 111320 * Math.cos((g[i].lat * Math.PI) / 180);
+      const L = Math.hypot((g[i + 1].lon - g[i].lon) * kx, (g[i + 1].lat - g[i].lat) * 110540);
+      segs.push({ a: g[i], b: g[i + 1], L });
+      total += L;
+    }
+  }
+  if (total < 2000) throw new Error("No se encontró la costa del embalse en OpenStreetMap.");
+  const paso = total / n;
+  const out: any[] = [];
+  let acum = 0, objetivo = paso / 2, j = 0;
+  for (const s of segs) {
+    while (objetivo <= acum + s.L && j < n) {
+      const f = (objetivo - acum) / (s.L || 1);
+      out.push({ n: ++j, lat: s.a.lat + (s.b.lat - s.a.lat) * f, lon: s.a.lon + (s.b.lon - s.a.lon) * f, km_costa: Math.round(objetivo / 100) / 10 });
+      objetivo += paso;
+    }
+    acum += s.L;
+  }
+  return { puntos: out, perimetro_km: Math.round(total / 100) / 10 };
+};
+
+const handlerBarrido = async (zonaId: string, res: any) => {
   try {
-    if (cacheCauce && Date.now() - cacheCauce.t < 7 * 86400000) return res.json(cacheCauce.data);
-    const consulta = `[out:json][timeout:40];(way["waterway"="river"]["name"~"Neuqu",i](-38.75,-69.25,-37.95,-68.3););out geom;`;
+    const zona = ZONAS_BARRIDO[zonaId];
+    if (!zona) return res.status(404).json({ error: `Zona desconocida: ${zonaId}` });
+    const c = cacheBarrido[zonaId];
+    if (c && Date.now() - c.t < 7 * 86400000) return res.json(c.data);
     const r = await fetch("https://overpass-api.de/api/interpreter", {
       method: "POST",
       headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "monitor-ambiental-vaca-muerta" },
-      body: "data=" + encodeURIComponent(consulta)
+      body: "data=" + encodeURIComponent(`[out:json][timeout:40];(${zona.consulta});out geom;`)
     });
     if (!r.ok) throw new Error(`OpenStreetMap (Overpass) respondió HTTP ${r.status}`);
-    const d: any = await r.json();
-    // Puntos del cauce en metros locales (x este, y norte) respecto de Añelo
-    const kx = 111320 * Math.cos((ANELO_PT.lat * Math.PI) / 180);
-    const ky = 110540;
-    const pts: { x: number; y: number }[] = [];
-    for (const w of d.elements || []) {
-      const g = w.geometry || [];
-      for (let i = 0; i < g.length; i++) {
-        pts.push({ x: (g[i].lon - ANELO_PT.lon) * kx, y: (g[i].lat - ANELO_PT.lat) * ky });
-        // densificar tramos largos cada ~100 m
-        if (i + 1 < g.length) {
-          const a = { x: (g[i].lon - ANELO_PT.lon) * kx, y: (g[i].lat - ANELO_PT.lat) * ky };
-          const b = { x: (g[i + 1].lon - ANELO_PT.lon) * kx, y: (g[i + 1].lat - ANELO_PT.lat) * ky };
-          const L = Math.hypot(b.x - a.x, b.y - a.y);
-          for (let t = 100; t < L; t += 100) pts.push({ x: a.x + ((b.x - a.x) * t) / L, y: a.y + ((b.y - a.y) * t) / L });
-        }
-      }
+    const lineas = lineasOsm(await r.json());
+    let data: any;
+    if (zona.tipo === "rio") {
+      data = { tramos: muestrearRio(lineas, zona.referencia) };
+    } else {
+      const { puntos, perimetro_km } = muestrearCosta(lineas, 20);
+      data = { tramos: puntos, perimetro_km };
     }
-    if (pts.length < 20) throw new Error("No se encontró el cauce del río Neuquén en OpenStreetMap.");
-    // Dirección principal del río (PCA) cerca de Añelo
-    const cerca = pts.filter((p) => Math.hypot(p.x, p.y) < 30000);
-    const mx = cerca.reduce((a, p) => a + p.x, 0) / cerca.length;
-    const my = cerca.reduce((a, p) => a + p.y, 0) / cerca.length;
-    let sxx = 0, syy = 0, sxy = 0;
-    for (const p of cerca) { sxx += (p.x - mx) ** 2; syy += (p.y - my) ** 2; sxy += (p.x - mx) * (p.y - my); }
-    const ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
-    const ux = Math.cos(ang), uy = Math.sin(ang);
-    // Punto del cauce más cercano a Añelo = centro del barrido
-    const centro = cerca.reduce((best, p) => (Math.hypot(p.x, p.y) < Math.hypot(best.x, best.y) ? p : best), cerca[0]);
-    const t0 = centro.x * ux + centro.y * uy;
-    const tramos: any[] = [];
-    for (let k = -10; k < 10; k++) {
-      const tc = t0 + (k + 0.5) * 2000;
-      const banda = pts.filter((p) => Math.abs(p.x * ux + p.y * uy - tc) <= 400);
-      if (!banda.length) continue;
-      // posición mediana del cauce en esa franja (cubre brazos del río)
-      const xs = banda.map((p) => p.x).sort((a, b) => a - b);
-      const ys = banda.map((p) => p.y).sort((a, b) => a - b);
-      const x = xs[Math.floor(xs.length / 2)];
-      const y = ys[Math.floor(ys.length / 2)];
-      tramos.push({
-        n: tramos.length + 1,
-        km_desde_anelo: Math.round((k + 0.5) * 2 * 10) / 10,
-        lat: ANELO_PT.lat + y / ky,
-        lon: ANELO_PT.lon + x / kx
-      });
-    }
-    // Ordenar de oeste a este y numerar
-    // Oeste = aguas arriba (el río corre hacia el sureste)
-    tramos.sort((a, b) => a.lon - b.lon).forEach((t, i) => { t.n = i + 1; t.km_desde_anelo = (i - (tramos.length - 1) / 2) * 2; });
-    const data = {
-      fuente: "Cauce del río Neuquén: OpenStreetMap (© colaboradores de OpenStreetMap, ODbL)",
-      centro: { lat: ANELO_PT.lat + centro.y / ky, lon: ANELO_PT.lon + centro.x / kx },
-      radio_m: 1000,
-      tramos
+    data = {
+      zona: zona.id, nombre: zona.nombre, tipo: zona.tipo, referencia: zona.referencia, radio_m: 1000,
+      fuente: `${zona.tipo === "rio" ? "Cauce" : "Costa"}: OpenStreetMap (© colaboradores de OpenStreetMap, ODbL)`,
+      ...data
     };
-    cacheCauce = { t: Date.now(), data };
+    cacheBarrido[zonaId] = { t: Date.now(), data };
     return res.json(data);
   } catch (e: any) {
-    return res.status(502).json({ error: e.message || "No se pudo obtener el cauce del río" });
+    return res.status(502).json({ error: e.message || "No se pudo obtener la geometría de la zona" });
   }
-});
+};
+
+app.get("/api/barrido/zonas", (_req, res) => res.json(Object.values(ZONAS_BARRIDO).map(({ id, nombre, tipo }) => ({ id, nombre, tipo }))));
+app.get("/api/barrido/rio-anelo", (_req, res) => handlerBarrido("anelo", res));
+app.get("/api/barrido/:zona", (req, res) => handlerBarrido(req.params.zona, res));
 
 app.get("/api/satellite-connection", async (req, res) => {
   const rawClientId = process.env.COPERNICUS_CLIENT_ID || "";
