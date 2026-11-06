@@ -4,6 +4,7 @@ import Globo, { setGeo } from "../components/Globo";
 import { circuloKm } from "../lib/orbits";
 import { Loader2, Crosshair, ListChecks, FileDown } from "lucide-react";
 import { capturarMapa, generarInformePDF, nombreArchivo, type ItemLeyenda } from "../lib/exportar";
+import { obtenerBarrido, conCache } from "../services/osmGeo";
 
 type Nivel = "normal" | "observar" | "alerta" | "sin_datos";
 
@@ -527,9 +528,13 @@ function BarridoRio({ map }: { map: MLMap }) {
     setCorriendo(true);
     cancelar.current = false;
     try {
-      const r = await fetch(`/api/barrido/${zona}`);
-      const d = await r.json();
-      if (!r.ok) throw new Error(d.error);
+      // OpenStreetMap se consulta desde el navegador (con caché de 7 días); el servidor es el respaldo
+      const d: any = await conCache(`barrido-${zona}-v3`, () => obtenerBarrido(zona), async () => {
+        const r = await fetch(`/api/barrido/${zona}`);
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error);
+        return j;
+      });
       const ts: Tramo[] = d.tramos;
       setTramos(ts);
       setFuente(d.fuente);

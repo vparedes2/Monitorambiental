@@ -32,6 +32,7 @@ import {
   HelpCircle
 } from "lucide-react";
 import { VenteoAuditResponse, GeoJsonFeatureCollection } from "../types";
+import { obtenerLocalidades, conCache } from "../services/osmGeo";
 // Localidades con coordenadas reales desde OpenStreetMap (antes estaban cargadas a mano y había errores)
 interface Localidad { nombre: string; lat: number; lon: number; poblacion: number | null }
 const distKm = (a: number, b: number, c: number, d: number) => {
@@ -164,7 +165,9 @@ export default function VenteosMonitorModule() {
   const townsLayerRef = useRef<L.FeatureGroup | null>(null);
   const [localidades, setLocalidades] = useState<Localidad[]>([]);
   useEffect(() => {
-    fetch("/api/localidades").then((r) => r.json()).then((d) => setLocalidades(d.localidades || [])).catch(() => {});
+    conCache("localidades-v2", obtenerLocalidades, () => fetch("/api/localidades").then((r) => r.json()))
+      .then((d: any) => setLocalidades(d.localidades || []))
+      .catch(() => {});
   }, []);
   const cadastralLayerRef = useRef<L.FeatureGroup | null>(null);
   const vectorConnectorsLayerRef = useRef<L.FeatureGroup | null>(null);
