@@ -96,6 +96,20 @@ export default function Imagenes() {
   const [info, setInfo] = useState<string | null>(null);
   const [leyendaAbierta, setLeyendaAbierta] = useState(() => typeof window === "undefined" || window.innerWidth >= 1024);
   const { focos } = useFirms();
+  const [resImagen, setResImagen] = useState<{ mPx: number; nativa: number } | null>(null);
+  const [mPxPantalla, setMPxPantalla] = useState(9999);
+
+  // Resolución de la pantalla para avisar cuando la imagen procesada queda estirada
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !listo) return;
+    const calc = () => setMPxPantalla((78271.517 * Math.cos((map.getCenter().lat * Math.PI) / 180)) / Math.pow(2, map.getZoom()));
+    calc();
+    map.on("zoomend", calc);
+    return () => { map.off("zoomend", calc); };
+  }, [listo]);
+  const estirada = !!resImagen && opacidad > 0.05 && resImagen.mPx > 4 * mPxPantalla;
+  const enLimite = !!resImagen && resImagen.mPx <= resImagen.nativa * 1.05;
 
   const capa = CAPAS.find((c) => c.id === capaId)!;
 
@@ -104,17 +118,22 @@ export default function Imagenes() {
     setDias(c.dias);
   };
 
-  const generar = async () => {
+  const generar = async (areaForzada?: "cuenca" | "vista") => {
     const map = mapRef.current;
     if (!map) return;
+    const areaUsar = areaForzada ?? area;
+    if (areaForzada) setArea(areaForzada);
     let bbox = CUENCA_BBOX;
-    if (area === "vista") {
+    if (areaUsar === "vista") {
       const b = map.getBounds();
       bbox = [b.getWest(), b.getSouth(), b.getEast(), b.getNorth()];
     }
     const [w, s, e, n] = bbox;
     const ratio = ((e - w) * Math.cos((((s + n) / 2) * Math.PI) / 180)) / (n - s);
-    const ancho = 1200;
+    // Resolución nativa: 10 m (Sentinel-2/1), 1 km (Sentinel-3), ~5 km (Sentinel-5P).
+    const nativa = capaId === "termico" ? 1000 : ["metano", "no2", "so2", "co"].includes(capaId) ? 3500 : capaId === "swir" ? 20 : 10;
+    const anchoM = (e - w) * 111320 * Math.cos((((s + n) / 2) * Math.PI) / 180);
+    const ancho = Math.round(Math.min(1400, Math.max(200, anchoM / nativa)));
     const alto = Math.round(Math.min(1400, Math.max(200, ancho / ratio)));
     setCargando(true);
     setError(null);
@@ -136,7 +155,8 @@ export default function Imagenes() {
         map.addLayer({ id: "imagen", type: "raster", source: "imagen", paint: { "raster-opacity": opacidad, "raster-fade-duration": 300 } }, map.getLayer("cuenca-relleno") ? "cuenca-relleno" : undefined);
       }
       setInfo(`${capa.nombre}, ${capa.satelite}, últimos ${dias} días`);
-      if (area === "cuenca") map.fitBounds([[w, s], [e, n]], { padding: 30, duration: 900 });
+      setResImagen({ mPx: Math.max(nativa, anchoM / ancho), nativa });
+      if (areaUsar === "cuenca") map.fitBounds([[w, s], [e, n]], { padding: 30, duration: 900 });
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -213,7 +233,7 @@ export default function Imagenes() {
               </div>
               {area === "vista" && <p className="text-[11px] text-tenue mt-1.5">Acercate a una locación para ver más detalle (hasta 10 m por píxel).</p>}
             </div>
-            <button onClick={generar} disabled={cargando || !listo}
+            <button onClick={() => generar()} disabled={cargando || !listo}
               className="w-full flex items-center justify-center gap-2 px-3 py-2.5 bg-hielo text-noche font-semibold disabled:opacity-60">
               {cargando && <Loader2 className="w-4 h-4 animate-spin" />}
               {cargando ? "Procesando imagen…" : "Generar imagen"}
@@ -261,6 +281,19 @@ export default function Imagenes() {
               </div>
             )}
           </details>
+          {estirada && !cargando && (
+            <div className="absolute left-4 right-4 sm:left-auto sm:right-4 top-24 sm:top-4 sm:max-w-sm instrumento px-4 py-3 text-sm z-10">
+              {enLimite ? (
+                <p>Te acercaste más que la resolución de {capa.satelite} ({resImagen!.nativa} m por píxel): por eso se ve borrosa. Para ver detalle, bajá la opacidad y mirá el mapa base satelital, o abrí la zona en Google Earth desde “Mapa base”.</p>
+              ) : (
+                <p>La imagen está estirada: fue generada para un área grande ({Math.round(resImagen!.mPx)} m por píxel).</p>
+              )}
+              <div className="flex gap-2 mt-2">
+                {!enLimite && <button onClick={() => generar("vista")} className="px-3 py-1.5 text-xs bg-hielo text-noche font-semibold">Regenerar para esta vista</button>}
+                <button onClick={() => setOpacidad(0)} className="px-3 py-1.5 text-xs border border-linea text-hielo">Ocultar capa</button>
+              </div>
+            </div>
+          )}
           {imagenUrl && (
             <a href={imagenUrl} download={`vaca-muerta-${capaId}.png`} className="absolute right-4 bottom-10 flex items-center gap-1.5 px-3 py-1.5 text-xs border border-linea bg-noche/85 text-hielo hover:border-hielo">
               <Download className="w-3.5 h-3.5" /> Descargar PNG

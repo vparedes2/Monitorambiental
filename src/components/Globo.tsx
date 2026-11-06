@@ -177,6 +177,18 @@ export default function Globo({ centro, zoom, interactivo = true, onListo, class
 
   // El contenedor externo posiciona; MapLibre fuerza position:relative en el interno
   const actual = MAPAS_BASE.find((b) => b.id === baseId) ?? MAPAS_BASE[0];
+  const abrirExterno = (destino: "earth" | "maps") => {
+    const map = mapRef.current;
+    if (!map) return;
+    const c = map.getCenter();
+    const anchoPx = map.getContainer().clientWidth || 800;
+    const metros = Math.max(150, Math.round(((78271.517 * Math.cos((c.lat * Math.PI) / 180)) / Math.pow(2, map.getZoom())) * anchoPx));
+    const url = destino === "earth"
+      ? `https://earth.google.com/web/@${c.lat.toFixed(6)},${c.lng.toFixed(6)},0a,${metros}d,35y,0h,0t,0r`
+      : `https://www.google.com/maps/@${c.lat.toFixed(6)},${c.lng.toFixed(6)},${metros}m/data=!3m1!1e3`;
+    window.open(url, "_blank", "noopener");
+    setAbierto(false);
+  };
   return (
     <div className={className ?? "absolute inset-0"}>
       <div ref={ref} className="w-full h-full" />
@@ -193,6 +205,17 @@ export default function Globo({ centro, zoom, interactivo = true, onListo, class
                   </button>
                 </li>
               ))}
+              <li className="border-t border-linea mt-1 pt-1">
+                <button onClick={() => abrirExterno("earth")} className="w-full text-left px-3 py-2 hover:bg-noche/50">
+                  <span className="block text-sm">Abrir esta vista en Google Earth ↗</span>
+                  <span className="block text-[11px] text-tenue leading-snug">Imagen de mayor resolución y 3D, en otra pestaña.</span>
+                </button>
+              </li>
+              <li>
+                <button onClick={() => abrirExterno("maps")} className="w-full text-left px-3 py-2 hover:bg-noche/50">
+                  <span className="block text-sm">Abrir en Google Maps satelital ↗</span>
+                </button>
+              </li>
             </ul>
           )}
           <button onClick={() => setAbierto((v) => !v)} aria-expanded={abierto}
