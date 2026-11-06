@@ -632,9 +632,9 @@ function evaluatePixel(samples,scenes){
     : "return {det:[cand,valido,caida], dataMask:[valido]};"}
 }`;
 
-const scriptDerrameAgua = (modo: "imagen" | "stats", umbral = -4) => `//VERSION=3
+const scriptDerrameAgua = (modo: "imagen" | "stats", umbral = -4, techo = -21) => `//VERSION=3
 function setup(){return{input:[{bands:["VV","dataMask"]}],
-output:${modo === "imagen" ? '[{id:"default",bands:4}]' : '[{id:"det",bands:3,sampleType:"FLOAT32"},{id:"dataMask",bands:1}]'},mosaicking:"ORBIT"}}
+output:${modo === "imagen" ? '[{id:"default",bands:4}]' : '[{id:"det",bands:4,sampleType:"FLOAT32"},{id:"dataMask",bands:1}]'},mosaicking:"ORBIT"}}
 function med(a){if(!a.length)return null;a.sort(function(x,y){return x-y});var m=Math.floor(a.length/2);return a.length%2?a[m]:(a[m-1]+a[m])/2}
 function evaluatePixel(samples,scenes){
   var vals=[],ult=null,tUlt=-1;
@@ -645,17 +645,17 @@ function evaluatePixel(samples,scenes){
     vals.push(db);
     if(t>tUlt){tUlt=t;ult=db}
   }
-  if(vals.length<3){ ${modo === "imagen" ? "return[0,0,0,0];" : "return {det:[0,0,0], dataMask:[0]};"} }
+  if(vals.length<3){ ${modo === "imagen" ? "return[0,0,0,0];" : "return {det:[0,0,0,0], dataMask:[0]};"} }
   var m=med(vals.slice());
   var agua=m<-18?1:0;
   var anom=ult-m;
-  var cand=(agua&&anom<=${umbral.toFixed(2)}&&ult<-21)?1:0;
+  var cand=(agua&&anom<=${umbral.toFixed(2)}&&ult<${techo.toFixed(2)})?1:0;
   ${modo === "imagen"
     ? "if(cand)return[1,0.15,0.1,0.95]; if(agua)return[0.15,0.45,0.85,0.35]; return[0,0,0,0];"
-    : "return {det:[cand,agua,anom], dataMask:[agua]};"}
+    : "return {det:[cand,agua,anom,ult], dataMask:[agua]};"}
 }`;
 
-const configDerrame = (tipo: "suelo" | "agua", radioM: number, umbral = -4) => {
+const configDerrame = (tipo: "suelo" | "agua", radioM: number, umbral = -4, techo = -21) => {
   const ahora = new Date();
   if (tipo === "suelo") {
     const desde = new Date(ahora.getTime() - 90 * 86400000);
@@ -670,7 +670,7 @@ const configDerrame = (tipo: "suelo" | "agua", radioM: number, umbral = -4) => {
   return {
     desde, hasta: ahora, corte: null, intervalo: "P36D", resM: 10,
     dato: { type: "sentinel-1-grd", dataFilter: { acquisitionMode: "IW", polarization: "DV" } },
-    script: (m: "imagen" | "stats") => scriptDerrameAgua(m, umbral)
+    script: (m: "imagen" | "stats") => scriptDerrameAgua(m, umbral, techo)
   };
 };
 
@@ -688,8 +688,8 @@ app.get("/api/derrames", async (req, res) => {
     const radio = Math.min(3000, Math.max(100, Number(req.query.radio) || 500));
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ error: "Faltan lat y lon" });
     const token = await obtenerTokenCdse();
-    const correr = async (umbral: number) => {
-      const cfg = configDerrame(tipo, radio, umbral);
+    const correr = async (umbral: number, techo = -21) => {
+      const cfg = configDerrame(tipo, radio, umbral, techo);
       const lado = Math.round(Math.min(tipo === "agua" ? 400 : 300, Math.max(20, (2 * radio) / cfg.resM)));
       const cuerpo = {
         input: { bounds: { geometry: circuloGeo(lat, lon, radio), properties: { crs: "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } }, data: [cfg.dato] },
@@ -722,18 +722,20 @@ app.get("/api/derrames", async (req, res) => {
     // Agua: primero se mide cuánto se oscureció TODO el espejo de agua en la última
     // pasada (calma de viento); solo cuentan las zonas 4 dB más oscuras que ese valor.
     let umbral = -4;
-    let corrida = await correr(umbral);
+    let techo = -21;
+    let corrida = await correr(umbral, techo);
     let anomMediana: number | null = null;
     if (tipo === "agua") {
       const b = corrida.it.outputs?.det?.bands || {};
       const k = Object.keys(b).sort((x, y) => Number(x.replace(/\D/g, "")) - Number(y.replace(/\D/g, "")));
-      const st = b[k[2]]?.stats || {};
-      const p50 = st.percentiles?.["50.0"] ?? st.percentiles?.["50"] ?? st.mean;
-      if (typeof p50 === "number" && Number.isFinite(p50)) {
-        anomMediana = p50;
-        const nuevo = Math.min(-4, p50 - 4);
-        if (nuevo < umbral - 0.05) { umbral = nuevo; corrida = await correr(umbral); }
-      }
+      const p50 = (st: any) => { const v = st?.percentiles?.["50.0"] ?? st?.percentiles?.["50"] ?? st?.mean; return typeof v === "number" && Number.isFinite(v) ? v : null; };
+      const anomP50 = p50(b[k[2]]?.stats);
+      const ultP50 = p50(b[k[3]]?.stats);
+      // Temporal: 4 dB más oscuro que el cambio general del espejo de agua.
+      if (anomP50 !== null) { anomMediana = anomP50; umbral = Math.min(-4, anomP50 - 4); }
+      // Espacial: al menos 6 dB más oscuro que el agua circundante en esa misma pasada.
+      if (ultP50 !== null) techo = Math.min(-21, ultP50 - 6);
+      if (umbral !== -4 || techo !== -21) corrida = await correr(umbral, techo);
     }
     const { cfg, it, pxM } = corrida;
     const bandas = it.outputs?.det?.bands || {};
@@ -767,11 +769,11 @@ app.get("/api/derrames", async (req, res) => {
       area_candidata_m2: areaCand,
       area_analizada_m2: areaBase,
       periodo: { desde: cfg.desde.toISOString().slice(0, 10), hasta: cfg.hasta.toISOString().slice(0, 10), corte: cfg.corte ? cfg.corte.toISOString().slice(0, 10) : null },
-      imagen: { url: `/api/derrames/imagen?tipo=${tipo}&lat=${lat}&lon=${lon}&radio=${radio}&umbral=${umbral.toFixed(2)}`, bbox },
+      imagen: { url: `/api/derrames/imagen?tipo=${tipo}&lat=${lat}&lon=${lon}&radio=${radio}&umbral=${umbral.toFixed(2)}&techo=${techo.toFixed(2)}`, bbox },
       oscurecimiento_general_db: anomMediana,
       metodo: tipo === "suelo"
         ? "Sentinel-2 L2A (20 m). Por cada píxel: mediana de brillo de los 70 días previos vs. los últimos 20 días, sin nubes ni sombras (SCL). Candidato si cae >30%, queda oscuro (<0,12), no es agua y perdió o no tenía vegetación. Mancha mínima detectable ≈ 800 m²."
-        : `Sentinel-1 GRD IW (10 m, VV). Agua permanente = mediana < −18 dB en 36 días. Candidato si la última pasada es al menos ${Math.abs(umbral).toFixed(1)} dB más oscura que su mediana (4 dB más que el oscurecimiento general del espejo de agua, para descontar días sin viento) y < −21 dB. Requiere ≥3 pasadas.`
+        : `Sentinel-1 GRD IW (10 m, VV). Agua permanente = mediana < −18 dB en 36 días. Candidato si en la última pasada el píxel es al menos ${Math.abs(umbral).toFixed(1)} dB más oscuro que su propia mediana (descontando el cambio general del espejo por viento) y además queda por debajo de ${techo.toFixed(1)} dB, es decir 6 dB más oscuro que el agua de alrededor en esa pasada. Requiere ≥3 pasadas. Las zonas abrigadas del viento junto a la costa pueden dar falsos positivos.`
     });
   } catch (e: any) {
     return res.status(500).json({ error: e.message || "Error en la detección" });
@@ -785,7 +787,8 @@ app.get("/api/derrames/imagen", async (req, res) => {
     const lon = Number(req.query.lon);
     const radio = Math.min(3000, Math.max(100, Number(req.query.radio) || 500));
     const umbralQ = Number(req.query.umbral);
-    const cfg = configDerrame(tipo, radio, Number.isFinite(umbralQ) ? Math.min(-4, umbralQ) : -4);
+    const techoQ = Number(req.query.techo);
+    const cfg = configDerrame(tipo, radio, Number.isFinite(umbralQ) ? Math.min(-4, umbralQ) : -4, Number.isFinite(techoQ) ? Math.min(-21, techoQ) : -21);
     const lado = Math.round(Math.min(800, Math.max(64, (2 * radio) / cfg.resM)));
     const token = await obtenerTokenCdse();
     const cuerpo = {
