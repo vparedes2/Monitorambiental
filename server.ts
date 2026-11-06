@@ -842,15 +842,34 @@ const ZONAS_BARRIDO: Record<string, ZonaBarrido> = {
   marimenuco: {
     id: "marimenuco", nombre: "Costa del lago Mari Menuco", tipo: "costa",
     referencia: { nombre: "Mari Menuco", lat: -38.58, lon: -68.62 },
-    consulta: `nwr["natural"="water"]["name"~"Mari Menuco",i](-38.8,-69.0,-38.35,-68.3);`
+    consulta: `nwr["natural"="water"]["name"~"Mari ?Menuco",i](-38.8,-69.0,-38.35,-68.3);nwr["landuse"="reservoir"]["name"~"Mari ?Menuco",i](-38.8,-69.0,-38.35,-68.3);nwr["water"="reservoir"]["name"~"Mari ?Menuco",i](-38.8,-69.0,-38.35,-68.3);`
   },
   barreales: {
     id: "barreales", nombre: "Costa del lago Los Barreales", tipo: "costa",
     referencia: { nombre: "Los Barreales", lat: -38.52, lon: -68.85 },
-    consulta: `nwr["natural"="water"]["name"~"Barreales",i](-38.8,-69.2,-38.3,-68.5);`
+    consulta: `nwr["natural"="water"]["name"~"Barreales",i](-38.8,-69.2,-38.3,-68.5);nwr["landuse"="reservoir"]["name"~"Barreales",i](-38.8,-69.2,-38.3,-68.5);nwr["water"="reservoir"]["name"~"Barreales",i](-38.8,-69.2,-38.3,-68.5);`
   }
 };
 const cacheBarrido: Record<string, { t: number; data: any }> = {};
+
+const SERVIDORES_OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
+const consultarOverpass = async (q: string) => {
+  let ultimo = "";
+  for (const url of SERVIDORES_OVERPASS) {
+    try {
+      const r = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "monitor-ambiental-vaca-muerta" },
+        body: "data=" + encodeURIComponent(q)
+      });
+      if (r.ok) return await r.json();
+      ultimo = `HTTP ${r.status}`;
+    } catch (e: any) {
+      ultimo = e.message;
+    }
+  }
+  throw new Error(`OpenStreetMap (Overpass) no respondió: ${ultimo}`);
+};
 
 const lineasOsm = (d: any): { lat: number; lon: number }[][] => {
   const lineas: { lat: number; lon: number }[][] = [];
@@ -866,43 +885,63 @@ const lineasOsm = (d: any): { lat: number; lon: number }[][] => {
 const muestrearRio = (lineas: { lat: number; lon: number }[][], ref: { lat: number; lon: number }) => {
   const kx = 111320 * Math.cos((ref.lat * Math.PI) / 180);
   const ky = 110540;
-  const pts: { x: number; y: number }[] = [];
-  for (const g of lineas) {
-    for (let i = 0; i < g.length; i++) {
-      const a = { x: (g[i].lon - ref.lon) * kx, y: (g[i].lat - ref.lat) * ky };
-      pts.push(a);
-      if (i + 1 < g.length) {
-        const b = { x: (g[i + 1].lon - ref.lon) * kx, y: (g[i + 1].lat - ref.lat) * ky };
-        const L = Math.hypot(b.x - a.x, b.y - a.y);
-        for (let t = 100; t < L; t += 100) pts.push({ x: a.x + ((b.x - a.x) * t) / L, y: a.y + ((b.y - a.y) * t) / L });
-      }
+  const aXY = (p: { lat: number; lon: number }) => ({ x: (p.lon - ref.lon) * kx, y: (p.lat - ref.lat) * ky });
+  const ways = lineas.filter((g) => g.length > 1).map((g) => g.map(aXY));
+  if (!ways.length) throw new Error("No se encontró el cauce en OpenStreetMap.");
+  const clave = (p: { x: number; y: number }) => `${Math.round(p.x / 5)}_${Math.round(p.y / 5)}`;
+
+  // Unir tramos de OSM que comparten extremos en una sola línea continua (cauce principal)
+  const usado = new Array(ways.length).fill(false);
+  const distRef = (w: { x: number; y: number }[]) => Math.min(...w.map((p) => Math.hypot(p.x, p.y)));
+  let semilla = 0;
+  ways.forEach((w, k) => { if (distRef(w) < distRef(ways[semilla])) semilla = k; });
+  usado[semilla] = true;
+  let cadena = [...ways[semilla]];
+  const extender = (alFinal: boolean) => {
+    for (;;) {
+      const extremo = clave(alFinal ? cadena[cadena.length - 1] : cadena[0]);
+      let mejor = -1, invertir = false, largo = -1;
+      ways.forEach((w, k) => {
+        if (usado[k]) return;
+        const ini = clave(w[0]), fin = clave(w[w.length - 1]);
+        const conecta = alFinal ? (ini === extremo ? 0 : fin === extremo ? 1 : -1) : (fin === extremo ? 0 : ini === extremo ? 1 : -1);
+        if (conecta < 0) return;
+        const L = w.length;
+        if (L > largo) { mejor = k; invertir = conecta === 1; largo = L; }
+      });
+      if (mejor < 0) return;
+      usado[mejor] = true;
+      let w = ways[mejor];
+      if (invertir) w = [...w].reverse();
+      cadena = alFinal ? cadena.concat(w.slice(1)) : w.slice(0, -1).concat(cadena);
     }
-  }
-  if (pts.length < 20) throw new Error("No se encontró el cauce en OpenStreetMap.");
-  const cerca = pts.filter((p) => Math.hypot(p.x, p.y) < 30000);
-  if (cerca.length < 10) throw new Error("El cauce encontrado queda lejos de la localidad de referencia.");
-  const mx = cerca.reduce((a, p) => a + p.x, 0) / cerca.length;
-  const my = cerca.reduce((a, p) => a + p.y, 0) / cerca.length;
-  let sxx = 0, syy = 0, sxy = 0;
-  for (const p of cerca) { sxx += (p.x - mx) ** 2; syy += (p.y - my) ** 2; sxy += (p.x - mx) * (p.y - my); }
-  const ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
-  const ux = Math.cos(ang), uy = Math.sin(ang);
-  const centro = cerca.reduce((best, p) => (Math.hypot(p.x, p.y) < Math.hypot(best.x, best.y) ? p : best), cerca[0]);
-  const t0 = centro.x * ux + centro.y * uy;
+  };
+  extender(true);
+  extender(false);
+
+  // Distancia acumulada a lo largo del cauce
+  const acum = [0];
+  for (let k = 1; k < cadena.length; k++) acum.push(acum[k - 1] + Math.hypot(cadena[k].x - cadena[k - 1].x, cadena[k].y - cadena[k - 1].y));
+  let iRef = 0;
+  cadena.forEach((p, k) => { if (Math.hypot(p.x, p.y) < Math.hypot(cadena[iRef].x, cadena[iRef].y)) iRef = k; });
+  if (Math.hypot(cadena[iRef].x, cadena[iRef].y) > 30000) throw new Error("El cauce encontrado queda lejos de la localidad de referencia.");
+  const puntoEn = (d: number) => {
+    if (d < 0 || d > acum[acum.length - 1]) return null;
+    let k = 1;
+    while (k < acum.length && acum[k] < d) k++;
+    const f = (d - acum[k - 1]) / ((acum[k] - acum[k - 1]) || 1);
+    return { x: cadena[k - 1].x + (cadena[k].x - cadena[k - 1].x) * f, y: cadena[k - 1].y + (cadena[k].y - cadena[k - 1].y) * f };
+  };
+  // Sentido aguas abajo: los dos ríos corren de oeste a este
+  const signo = cadena[cadena.length - 1].x >= cadena[0].x ? 1 : -1;
   const tramos: any[] = [];
   for (let k = -10; k < 10; k++) {
-    const tc = t0 + (k + 0.5) * 2000;
-    const banda = pts.filter((p) => Math.abs(p.x * ux + p.y * uy - tc) <= 400);
-    if (!banda.length) continue;
-    const xs = banda.map((p) => p.x).sort((a, b) => a - b);
-    const ys = banda.map((p) => p.y).sort((a, b) => a - b);
-    tramos.push({ lat: ref.lat + ys[Math.floor(ys.length / 2)] / ky, lon: ref.lon + xs[Math.floor(xs.length / 2)] / kx });
+    const km = (k + 0.5) * 2;
+    const p = puntoEn(acum[iRef] + signo * km * 1000);
+    if (!p) continue;
+    tramos.push({ lat: ref.lat + p.y / ky, lon: ref.lon + p.x / kx, km_desde_ref: km });
   }
-  // Oeste = aguas arriba en ambos ríos (corren hacia el este / sureste)
-  tramos.sort((a, b) => a.lon - b.lon).forEach((t, i) => {
-    t.n = i + 1;
-    t.km_desde_ref = (i - (tramos.length - 1) / 2) * 2;
-  });
+  tramos.forEach((t, i) => { t.n = i + 1; });
   return tramos;
 };
 
@@ -939,13 +978,7 @@ const handlerBarrido = async (zonaId: string, res: any) => {
     if (!zona) return res.status(404).json({ error: `Zona desconocida: ${zonaId}` });
     const c = cacheBarrido[zonaId];
     if (c && Date.now() - c.t < 7 * 86400000) return res.json(c.data);
-    const r = await fetch("https://overpass-api.de/api/interpreter", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "monitor-ambiental-vaca-muerta" },
-      body: "data=" + encodeURIComponent(`[out:json][timeout:40];(${zona.consulta});out geom;`)
-    });
-    if (!r.ok) throw new Error(`OpenStreetMap (Overpass) respondió HTTP ${r.status}`);
-    const lineas = lineasOsm(await r.json());
+    const lineas = lineasOsm(await consultarOverpass(`[out:json][timeout:40];(${zona.consulta});out geom;`));
     let data: any;
     if (zona.tipo === "rio") {
       data = { tramos: muestrearRio(lineas, zona.referencia) };
@@ -973,13 +1006,7 @@ app.get("/api/localidades", async (_req, res) => {
     if (cacheLocalidades && Date.now() - cacheLocalidades.t < 7 * 86400000) return res.json(cacheLocalidades.data);
     const patron = NOMBRES_LOCALIDADES.join("|");
     const q = `[out:json][timeout:30];node["place"~"city|town|village|hamlet"]["name"~"^(${patron})$"](-39.4,-70.6,-36.7,-67.6);out;`;
-    const r = await fetch("https://overpass-api.de/api/interpreter", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "monitor-ambiental-vaca-muerta" },
-      body: "data=" + encodeURIComponent(q)
-    });
-    if (!r.ok) throw new Error(`OpenStreetMap (Overpass) respondió HTTP ${r.status}`);
-    const d: any = await r.json();
+    const d: any = await consultarOverpass(q);
     const vistos = new Set<string>();
     const localidades = (d.elements || [])
       .filter((e: any) => { const k = e.tags?.name; if (!k || vistos.has(k)) return false; vistos.add(k); return true; })
