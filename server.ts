@@ -860,7 +860,8 @@ const consultarOverpass = async (q: string) => {
       const r = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "monitor-ambiental-vaca-muerta" },
-        body: "data=" + encodeURIComponent(q)
+        body: "data=" + encodeURIComponent(q),
+        signal: AbortSignal.timeout(17000)
       });
       if (r.ok) return await r.json();
       ultimo = `HTTP ${r.status}`;
@@ -888,7 +889,6 @@ const muestrearRio = (lineas: { lat: number; lon: number }[][], ref: { lat: numb
   const aXY = (p: { lat: number; lon: number }) => ({ x: (p.lon - ref.lon) * kx, y: (p.lat - ref.lat) * ky });
   const ways = lineas.filter((g) => g.length > 1).map((g) => g.map(aXY));
   if (!ways.length) throw new Error("No se encontró el cauce en OpenStreetMap.");
-  const clave = (p: { x: number; y: number }) => `${Math.round(p.x / 5)}_${Math.round(p.y / 5)}`;
 
   // Unir tramos de OSM que comparten extremos en una sola línea continua (cauce principal)
   const usado = new Array(ways.length).fill(false);
@@ -899,15 +899,17 @@ const muestrearRio = (lineas: { lat: number; lon: number }[][], ref: { lat: numb
   let cadena = [...ways[semilla]];
   const extender = (alFinal: boolean) => {
     for (;;) {
-      const extremo = clave(alFinal ? cadena[cadena.length - 1] : cadena[0]);
-      let mejor = -1, invertir = false, largo = -1;
+      const ext = alFinal ? cadena[cadena.length - 1] : cadena[0];
+      let mejor = -1, invertir = false, distMin = 250;
       ways.forEach((w, k) => {
         if (usado[k]) return;
-        const ini = clave(w[0]), fin = clave(w[w.length - 1]);
-        const conecta = alFinal ? (ini === extremo ? 0 : fin === extremo ? 1 : -1) : (fin === extremo ? 0 : ini === extremo ? 1 : -1);
-        if (conecta < 0) return;
-        const L = w.length;
-        if (L > largo) { mejor = k; invertir = conecta === 1; largo = L; }
+        const dIni = Math.hypot(w[0].x - ext.x, w[0].y - ext.y);
+        const dFin = Math.hypot(w[w.length - 1].x - ext.x, w[w.length - 1].y - ext.y);
+        // al final de la cadena se engancha por el inicio del tramo; al comienzo, por su final
+        const dDirecto = alFinal ? dIni : dFin;
+        const dInvertido = alFinal ? dFin : dIni;
+        if (dDirecto < distMin) { mejor = k; invertir = false; distMin = dDirecto; }
+        if (dInvertido < distMin) { mejor = k; invertir = true; distMin = dInvertido; }
       });
       if (mejor < 0) return;
       usado[mejor] = true;
@@ -978,7 +980,7 @@ const handlerBarrido = async (zonaId: string, res: any) => {
     if (!zona) return res.status(404).json({ error: `Zona desconocida: ${zonaId}` });
     const c = cacheBarrido[zonaId];
     if (c && Date.now() - c.t < 7 * 86400000) return res.json(c.data);
-    const lineas = lineasOsm(await consultarOverpass(`[out:json][timeout:40];(${zona.consulta});out geom;`));
+    const lineas = lineasOsm(await consultarOverpass(`[out:json][timeout:15];(${zona.consulta});out geom;`));
     let data: any;
     if (zona.tipo === "rio") {
       data = { tramos: muestrearRio(lineas, zona.referencia) };
@@ -999,13 +1001,13 @@ const handlerBarrido = async (zonaId: string, res: any) => {
 };
 
 // Localidades con coordenadas reales (OpenStreetMap), con caché de 7 días
-const NOMBRES_LOCALIDADES = ["Añelo", "Tratayén", "Sauzal Bonito", "San Patricio del Chañar", "Rincón de los Sauces", "Neuquén", "Centenario", "Vista Alegre Norte", "Vista Alegre Sur", "Plottier", "Cutral Có", "Plaza Huincul", "Octavio Pico", "Barrancas", "Buta Ranquil", "Senillosa", "Cinco Saltos", "Catriel", "Chos Malal", "Paso Aguerre"];
+const NOMBRES_LOCALIDADES = ["Añelo", "Tratay[eé]n", "Sauzal Bonito", "San Patricio del Cha[ñn]ar", "Rinc[oó]n de los Sauces", "Neuquén", "Centenario", "Vista Alegre Norte", "Vista Alegre Sur", "Plottier", "Cutral Có", "Plaza Huincul", "Octavio Pico", "Barrancas", "Buta Ranquil", "Senillosa", "Cinco Saltos", "Catriel", "Chos Malal", "Paso Aguerre"];
 let cacheLocalidades: { t: number; data: any } | null = null;
 app.get("/api/localidades", async (_req, res) => {
   try {
     if (cacheLocalidades && Date.now() - cacheLocalidades.t < 7 * 86400000) return res.json(cacheLocalidades.data);
     const patron = NOMBRES_LOCALIDADES.join("|");
-    const q = `[out:json][timeout:30];node["place"~"city|town|village|hamlet"]["name"~"^(${patron})$"](-39.4,-70.6,-36.7,-67.6);out;`;
+    const q = `[out:json][timeout:30];node["place"~"city|town|village|hamlet|locality|suburb"]["name"~"^(${patron})$",i](-39.4,-70.6,-36.7,-67.6);out;`;
     const d: any = await consultarOverpass(q);
     const vistos = new Set<string>();
     const localidades = (d.elements || [])
