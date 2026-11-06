@@ -924,6 +924,47 @@ app.post("/api/geoportal/registrar-instalacion", (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Órbitas: elementos orbitales (TLE) reales desde CelesTrak, con caché de 6 h.
+// ---------------------------------------------------------------------------
+const SATELITES_SEGUIDOS = [
+  { id: "noaa20", nombre: "NOAA-20", buscar: "NOAA 20", instrumento: "VIIRS", franja_km: 3060, rol: "Focos térmicos (FIRMS)" },
+  { id: "noaa21", nombre: "NOAA-21", buscar: "NOAA 21", instrumento: "VIIRS", franja_km: 3060, rol: "Focos térmicos (FIRMS)" },
+  { id: "snpp", nombre: "Suomi NPP", buscar: "SUOMI NPP", instrumento: "VIIRS", franja_km: 3060, rol: "Focos térmicos (FIRMS)" },
+  { id: "s2a", nombre: "Sentinel-2A", buscar: "SENTINEL-2A", instrumento: "MSI", franja_km: 290, rol: "Imagen óptica 10 m" },
+  { id: "s2b", nombre: "Sentinel-2B", buscar: "SENTINEL-2B", instrumento: "MSI", franja_km: 290, rol: "Imagen óptica 10 m" },
+  { id: "s2c", nombre: "Sentinel-2C", buscar: "SENTINEL-2C", instrumento: "MSI", franja_km: 290, rol: "Imagen óptica 10 m" },
+  { id: "s5p", nombre: "Sentinel-5P", buscar: "SENTINEL-5P", instrumento: "TROPOMI", franja_km: 2600, rol: "Metano y gases (regional)" }
+];
+let cacheTle: { t: number; data: any } | null = null;
+
+app.get("/api/orbitas/tle", async (_req, res) => {
+  if (cacheTle && Date.now() - cacheTle.t < 6 * 3600 * 1000) return res.json(cacheTle.data);
+  const resultados = await Promise.all(SATELITES_SEGUIDOS.map(async (sat) => {
+    try {
+      const r = await fetch(`https://celestrak.org/NORAD/elements/gp.php?NAME=${encodeURIComponent(sat.buscar)}&FORMAT=TLE`);
+      const txt = await r.text();
+      const lineas = txt.split(/\r?\n/).map((l) => l.trimEnd()).filter(Boolean);
+      for (let i = 0; i + 2 < lineas.length + 1; i += 3) {
+        const nombre = lineas[i]?.trim() || "";
+        if (lineas[i + 1]?.startsWith("1 ") && lineas[i + 2]?.startsWith("2 ")) {
+          return { ...sat, nombre_celestrak: nombre, tle1: lineas[i + 1], tle2: lineas[i + 2] };
+        }
+      }
+      return { ...sat, error: txt.slice(0, 120) || "sin datos" };
+    } catch (e: any) {
+      return { ...sat, error: e.message };
+    }
+  }));
+  const data = {
+    fuente: "CelesTrak (NORAD GP)",
+    consultado_utc: new Date().toISOString(),
+    satelites: resultados
+  };
+  if (resultados.some((r: any) => r.tle1)) cacheTle = { t: Date.now(), data };
+  return res.json(data);
+});
+
 // Endpoint de Monitoreo Satelital en Vivo y Cruce Espacial Automático (NASA FIRMS & Sentinel-2)
 app.get("/api/venteos/monitoreo-satelital-en-vivo", async (req, res) => {
   const estado = await actualizarFirms(req.query.forzar === "1");

@@ -1,10 +1,21 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;650;700;900&family=JetBrains+Mono:wght@400;500;700;800&family=Space+Grotesk:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;650;700;900&family=JetBrains+Mono:wght@400;500;700;800&family=Space+Grotesk:wght@400;500;700&family=Saira+Condensed:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
   --font-display: "Space Grotesk", sans-serif;
+  --font-cond: "Saira Condensed", "Arial Narrow", sans-serif;
+  --font-plex: "IBM Plex Sans", ui-sans-serif, sans-serif;
+  --font-plexmono: "IBM Plex Mono", ui-monospace, monospace;
+  --color-noche: #0A1628;
+  --color-panel: #0F2035;
+  --color-linea: #22405E;
+  --color-hielo: #8FE3F0;
+  --color-llama: #FF8A3D;
+  --color-lutita: #C9A46A;
+  --color-texto: #E8EEF4;
+  --color-tenue: #8BA0B6;
 }
 
 @layer base {
@@ -29,3 +40,72 @@
 .animate-radar {
   animation: radar-scan 5s linear infinite;
 }
+
+
+@layer components {
+/* ---------- Sala de telemetría ---------- */
+.sala {
+  background:
+    radial-gradient(1200px 600px at 75% -10%, rgba(143, 227, 240, 0.06), transparent 60%),
+    linear-gradient(rgba(34, 64, 94, 0.18) 1px, transparent 1px) 0 0 / 100% 48px,
+    #0A1628;
+  color: #E8EEF4;
+  font-family: var(--font-plex);
+}
+.num { font-family: var(--font-plexmono); font-variant-numeric: tabular-nums; }
+.titulo { font-family: var(--font-cond); letter-spacing: 0.01em; }
+
+/* Panel con esquinas de instrumento */
+.instrumento {
+  position: relative;
+  background: rgba(15, 32, 53, 0.78);
+  border: 1px solid rgba(34, 64, 94, 0.9);
+  backdrop-filter: blur(10px);
+}
+.instrumento::before, .instrumento::after {
+  content: ""; position: absolute; width: 10px; height: 10px; pointer-events: none;
+  border-color: #8FE3F0; opacity: .7;
+}
+.instrumento::before { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
+.instrumento::after { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
+
+}
+
+.maplibregl-ctrl-attrib { font-size: 10px; background: rgba(10,22,40,.7) !important; color: #8BA0B6; }
+.maplibregl-ctrl-attrib a { color: #8BA0B6; }
+
+@keyframes barrido { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.radar-barrido { animation: barrido 6s linear infinite; transform-origin: 50% 50%; }
+
+@media (prefers-reduced-motion: reduce) {
+  .radar-barrido { animation: none; }
+}
+
+:focus-visible { outline: 2px solid #8FE3F0; outline-offset: 2px; }
+
+/* Re-tema de los módulos anteriores con la paleta de la sala */
+.legado {
+  --color-slate-950: #0A1628;
+  --color-slate-900: #0F2035;
+  --color-slate-850: #132840;
+  --color-slate-800: #22405E;
+  --color-slate-700: #2C4F72;
+  --color-slate-400: #8BA0B6;
+  --color-slate-300: #B5C4D3;
+  --color-slate-200: #D6E0EA;
+  --color-slate-100: #E8EEF4;
+  --color-teal-300: #8FE3F0;
+  --color-teal-400: #8FE3F0;
+  --color-teal-500: #5FC3D6;
+  --color-cyan-300: #8FE3F0;
+  --color-cyan-400: #8FE3F0;
+  --color-cyan-500: #5FC3D6;
+  --color-amber-300: #FFB27A;
+  --color-amber-400: #FF8A3D;
+  --color-amber-500: #FF8A3D;
+  --color-orange-500: #FF8A3D;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, sans-serif;
+  font-family: var(--font-plex);
+}
+.legado .rounded-2xl, .legado .rounded-xl { border-radius: 4px; }
