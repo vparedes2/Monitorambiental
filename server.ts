@@ -632,7 +632,7 @@ function evaluatePixel(samples,scenes){
     : "return {det:[cand,valido,caida], dataMask:[valido]};"}
 }`;
 
-const scriptDerrameAgua = (modo: "imagen" | "stats") => `//VERSION=3
+const scriptDerrameAgua = (modo: "imagen" | "stats", umbral = -4) => `//VERSION=3
 function setup(){return{input:[{bands:["VV","dataMask"]}],
 output:${modo === "imagen" ? '[{id:"default",bands:4}]' : '[{id:"det",bands:3,sampleType:"FLOAT32"},{id:"dataMask",bands:1}]'},mosaicking:"ORBIT"}}
 function med(a){if(!a.length)return null;a.sort(function(x,y){return x-y});var m=Math.floor(a.length/2);return a.length%2?a[m]:(a[m-1]+a[m])/2}
@@ -649,13 +649,13 @@ function evaluatePixel(samples,scenes){
   var m=med(vals.slice());
   var agua=m<-18?1:0;
   var anom=ult-m;
-  var cand=(agua&&anom<=-4&&ult<-21)?1:0;
+  var cand=(agua&&anom<=${umbral.toFixed(2)}&&ult<-21)?1:0;
   ${modo === "imagen"
     ? "if(cand)return[1,0.15,0.1,0.95]; if(agua)return[0.15,0.45,0.85,0.35]; return[0,0,0,0];"
     : "return {det:[cand,agua,anom], dataMask:[agua]};"}
 }`;
 
-const configDerrame = (tipo: "suelo" | "agua", radioM: number) => {
+const configDerrame = (tipo: "suelo" | "agua", radioM: number, umbral = -4) => {
   const ahora = new Date();
   if (tipo === "suelo") {
     const desde = new Date(ahora.getTime() - 90 * 86400000);
@@ -670,7 +670,7 @@ const configDerrame = (tipo: "suelo" | "agua", radioM: number) => {
   return {
     desde, hasta: ahora, corte: null, intervalo: "P36D", resM: 10,
     dato: { type: "sentinel-1-grd", dataFilter: { acquisitionMode: "IW", polarization: "DV" } },
-    script: (m: "imagen" | "stats") => scriptDerrameAgua(m)
+    script: (m: "imagen" | "stats") => scriptDerrameAgua(m, umbral)
   };
 };
 
@@ -687,35 +687,55 @@ app.get("/api/derrames", async (req, res) => {
     const lon = Number(req.query.lon);
     const radio = Math.min(3000, Math.max(100, Number(req.query.radio) || 500));
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ error: "Faltan lat y lon" });
-    const cfg = configDerrame(tipo, radio);
-    const lado = Math.round(Math.min(tipo === "agua" ? 400 : 300, Math.max(20, (2 * radio) / cfg.resM)));
-    const pxM = (2 * radio) / lado;
     const token = await obtenerTokenCdse();
-    const cuerpo = {
-      input: { bounds: { geometry: circuloGeo(lat, lon, radio), properties: { crs: "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } }, data: [cfg.dato] },
-      aggregation: {
-        timeRange: { from: cfg.desde.toISOString(), to: cfg.hasta.toISOString() },
-        aggregationInterval: { of: cfg.intervalo },
-        width: lado, height: lado,
-        evalscript: cfg.script("stats")
-      },
-      calculations: { default: {} }
+    const correr = async (umbral: number) => {
+      const cfg = configDerrame(tipo, radio, umbral);
+      const lado = Math.round(Math.min(tipo === "agua" ? 400 : 300, Math.max(20, (2 * radio) / cfg.resM)));
+      const cuerpo = {
+        input: { bounds: { geometry: circuloGeo(lat, lon, radio), properties: { crs: "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } }, data: [cfg.dato] },
+        aggregation: {
+          timeRange: { from: cfg.desde.toISOString(), to: cfg.hasta.toISOString() },
+          aggregationInterval: { of: cfg.intervalo },
+          width: lado, height: lado,
+          evalscript: cfg.script("stats")
+        },
+        calculations: { default: { statistics: { default: { percentiles: { k: [50] } } } } }
+      };
+      const r = await fetch("https://sh.dataspace.copernicus.eu/api/v1/statistics", {
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(cuerpo)
+      });
+      const txt = await r.text();
+      if (!r.ok) {
+        let msg = txt.slice(0, 300);
+        try { msg = JSON.parse(txt)?.error?.message || msg; } catch { /* texto */ }
+        throw new Error(`Sentinel Hub (HTTP ${r.status}): ${msg}`);
+      }
+      const d = JSON.parse(txt);
+      const it = (d.data || []).find((x: any) => !x.error);
+      if (!it) {
+        const err = (d.data || [])[0]?.error?.message;
+        throw new Error(err ? `Sentinel Hub: ${err}` : "No hubo imágenes en el período.");
+      }
+      return { cfg, it, pxM: (2 * radio) / lado };
     };
-    const r = await fetch("https://sh.dataspace.copernicus.eu/api/v1/statistics", {
-      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(cuerpo)
-    });
-    const txt = await r.text();
-    if (!r.ok) {
-      let msg = txt.slice(0, 300);
-      try { msg = JSON.parse(txt)?.error?.message || msg; } catch { /* texto */ }
-      return res.status(502).json({ error: `Sentinel Hub (HTTP ${r.status}): ${msg}` });
+
+    // Agua: primero se mide cuánto se oscureció TODO el espejo de agua en la última
+    // pasada (calma de viento); solo cuentan las zonas 4 dB más oscuras que ese valor.
+    let umbral = -4;
+    let corrida = await correr(umbral);
+    let anomMediana: number | null = null;
+    if (tipo === "agua") {
+      const b = corrida.it.outputs?.det?.bands || {};
+      const k = Object.keys(b).sort((x, y) => Number(x.replace(/\D/g, "")) - Number(y.replace(/\D/g, "")));
+      const st = b[k[2]]?.stats || {};
+      const p50 = st.percentiles?.["50.0"] ?? st.percentiles?.["50"] ?? st.mean;
+      if (typeof p50 === "number" && Number.isFinite(p50)) {
+        anomMediana = p50;
+        const nuevo = Math.min(-4, p50 - 4);
+        if (nuevo < umbral - 0.05) { umbral = nuevo; corrida = await correr(umbral); }
+      }
     }
-    const d = JSON.parse(txt);
-    const it = (d.data || []).find((x: any) => !x.error);
-    if (!it) {
-      const err = (d.data || [])[0]?.error?.message;
-      return res.status(502).json({ error: err ? `Sentinel Hub: ${err}` : "No hubo imágenes en el período." });
-    }
+    const { cfg, it, pxM } = corrida;
     const bandas = it.outputs?.det?.bands || {};
     const claves = Object.keys(bandas).sort((a, b) => Number(a.replace(/\D/g, "")) - Number(b.replace(/\D/g, "")));
     const stCand = bandas[claves[0]]?.stats || {};
@@ -747,10 +767,11 @@ app.get("/api/derrames", async (req, res) => {
       area_candidata_m2: areaCand,
       area_analizada_m2: areaBase,
       periodo: { desde: cfg.desde.toISOString().slice(0, 10), hasta: cfg.hasta.toISOString().slice(0, 10), corte: cfg.corte ? cfg.corte.toISOString().slice(0, 10) : null },
-      imagen: { url: `/api/derrames/imagen?tipo=${tipo}&lat=${lat}&lon=${lon}&radio=${radio}`, bbox },
+      imagen: { url: `/api/derrames/imagen?tipo=${tipo}&lat=${lat}&lon=${lon}&radio=${radio}&umbral=${umbral.toFixed(2)}`, bbox },
+      oscurecimiento_general_db: anomMediana,
       metodo: tipo === "suelo"
         ? "Sentinel-2 L2A (20 m). Por cada píxel: mediana de brillo de los 70 días previos vs. los últimos 20 días, sin nubes ni sombras (SCL). Candidato si cae >30%, queda oscuro (<0,12), no es agua y perdió o no tenía vegetación. Mancha mínima detectable ≈ 800 m²."
-        : "Sentinel-1 GRD IW (10 m, VV). Agua permanente = mediana < −18 dB en 36 días. Candidato si la última pasada es ≥4 dB más oscura que su mediana y < −21 dB. Requiere ≥3 pasadas."
+        : `Sentinel-1 GRD IW (10 m, VV). Agua permanente = mediana < −18 dB en 36 días. Candidato si la última pasada es al menos ${Math.abs(umbral).toFixed(1)} dB más oscura que su mediana (4 dB más que el oscurecimiento general del espejo de agua, para descontar días sin viento) y < −21 dB. Requiere ≥3 pasadas.`
     });
   } catch (e: any) {
     return res.status(500).json({ error: e.message || "Error en la detección" });
@@ -763,7 +784,8 @@ app.get("/api/derrames/imagen", async (req, res) => {
     const lat = Number(req.query.lat);
     const lon = Number(req.query.lon);
     const radio = Math.min(3000, Math.max(100, Number(req.query.radio) || 500));
-    const cfg = configDerrame(tipo, radio);
+    const umbralQ = Number(req.query.umbral);
+    const cfg = configDerrame(tipo, radio, Number.isFinite(umbralQ) ? Math.min(-4, umbralQ) : -4);
     const lado = Math.round(Math.min(800, Math.max(64, (2 * radio) / cfg.resM)));
     const token = await obtenerTokenCdse();
     const cuerpo = {
