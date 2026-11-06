@@ -816,6 +816,86 @@ app.get("/api/derrames/imagen", async (req, res) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Barrido del río Neuquén en la zona de Añelo: cauce real desde OpenStreetMap,
+// 20 tramos de 2 km (10 aguas arriba y 10 aguas abajo) con Añelo como centro.
+// ---------------------------------------------------------------------------
+const ANELO_PT = { lat: -38.352, lon: -68.789 };
+let cacheCauce: { t: number; data: any } | null = null;
+
+app.get("/api/barrido/rio-anelo", async (_req, res) => {
+  try {
+    if (cacheCauce && Date.now() - cacheCauce.t < 7 * 86400000) return res.json(cacheCauce.data);
+    const consulta = `[out:json][timeout:40];(way["waterway"="river"]["name"~"Neuqu",i](-38.75,-69.25,-37.95,-68.3););out geom;`;
+    const r = await fetch("https://overpass-api.de/api/interpreter", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "monitor-ambiental-vaca-muerta" },
+      body: "data=" + encodeURIComponent(consulta)
+    });
+    if (!r.ok) throw new Error(`OpenStreetMap (Overpass) respondió HTTP ${r.status}`);
+    const d: any = await r.json();
+    // Puntos del cauce en metros locales (x este, y norte) respecto de Añelo
+    const kx = 111320 * Math.cos((ANELO_PT.lat * Math.PI) / 180);
+    const ky = 110540;
+    const pts: { x: number; y: number }[] = [];
+    for (const w of d.elements || []) {
+      const g = w.geometry || [];
+      for (let i = 0; i < g.length; i++) {
+        pts.push({ x: (g[i].lon - ANELO_PT.lon) * kx, y: (g[i].lat - ANELO_PT.lat) * ky });
+        // densificar tramos largos cada ~100 m
+        if (i + 1 < g.length) {
+          const a = { x: (g[i].lon - ANELO_PT.lon) * kx, y: (g[i].lat - ANELO_PT.lat) * ky };
+          const b = { x: (g[i + 1].lon - ANELO_PT.lon) * kx, y: (g[i + 1].lat - ANELO_PT.lat) * ky };
+          const L = Math.hypot(b.x - a.x, b.y - a.y);
+          for (let t = 100; t < L; t += 100) pts.push({ x: a.x + ((b.x - a.x) * t) / L, y: a.y + ((b.y - a.y) * t) / L });
+        }
+      }
+    }
+    if (pts.length < 20) throw new Error("No se encontró el cauce del río Neuquén en OpenStreetMap.");
+    // Dirección principal del río (PCA) cerca de Añelo
+    const cerca = pts.filter((p) => Math.hypot(p.x, p.y) < 30000);
+    const mx = cerca.reduce((a, p) => a + p.x, 0) / cerca.length;
+    const my = cerca.reduce((a, p) => a + p.y, 0) / cerca.length;
+    let sxx = 0, syy = 0, sxy = 0;
+    for (const p of cerca) { sxx += (p.x - mx) ** 2; syy += (p.y - my) ** 2; sxy += (p.x - mx) * (p.y - my); }
+    const ang = 0.5 * Math.atan2(2 * sxy, sxx - syy);
+    const ux = Math.cos(ang), uy = Math.sin(ang);
+    // Punto del cauce más cercano a Añelo = centro del barrido
+    const centro = cerca.reduce((best, p) => (Math.hypot(p.x, p.y) < Math.hypot(best.x, best.y) ? p : best), cerca[0]);
+    const t0 = centro.x * ux + centro.y * uy;
+    const tramos: any[] = [];
+    for (let k = -10; k < 10; k++) {
+      const tc = t0 + (k + 0.5) * 2000;
+      const banda = pts.filter((p) => Math.abs(p.x * ux + p.y * uy - tc) <= 400);
+      if (!banda.length) continue;
+      // posición mediana del cauce en esa franja (cubre brazos del río)
+      const xs = banda.map((p) => p.x).sort((a, b) => a - b);
+      const ys = banda.map((p) => p.y).sort((a, b) => a - b);
+      const x = xs[Math.floor(xs.length / 2)];
+      const y = ys[Math.floor(ys.length / 2)];
+      tramos.push({
+        n: tramos.length + 1,
+        km_desde_anelo: Math.round((k + 0.5) * 2 * 10) / 10,
+        lat: ANELO_PT.lat + y / ky,
+        lon: ANELO_PT.lon + x / kx
+      });
+    }
+    // Ordenar de oeste a este y numerar
+    // Oeste = aguas arriba (el río corre hacia el sureste)
+    tramos.sort((a, b) => a.lon - b.lon).forEach((t, i) => { t.n = i + 1; t.km_desde_anelo = (i - (tramos.length - 1) / 2) * 2; });
+    const data = {
+      fuente: "Cauce del río Neuquén: OpenStreetMap (© colaboradores de OpenStreetMap, ODbL)",
+      centro: { lat: ANELO_PT.lat + centro.y / ky, lon: ANELO_PT.lon + centro.x / kx },
+      radio_m: 1000,
+      tramos
+    };
+    cacheCauce = { t: Date.now(), data };
+    return res.json(data);
+  } catch (e: any) {
+    return res.status(502).json({ error: e.message || "No se pudo obtener el cauce del río" });
+  }
+});
+
 app.get("/api/satellite-connection", async (req, res) => {
   const rawClientId = process.env.COPERNICUS_CLIENT_ID || "";
   const rawClientSecret = process.env.COPERNICUS_CLIENT_SECRET || "";

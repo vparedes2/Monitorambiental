@@ -86,9 +86,10 @@ export default function App() {
             </a>
           );
         })}
-        <span className="mt-auto num text-[10px] text-tenue text-center leading-tight px-2">
-          {new Date().toLocaleDateString("es-AR", { day: "2-digit", month: "short" })}
-        </span>
+        <a href="https://victorparedes.ar" target="_blank" rel="noopener" title="Desarrollado por Lic. Víctor Paredes"
+          className="mt-auto text-[10px] text-tenue hover:text-lutita text-center leading-tight px-2">
+          por<br />Lic. Víctor<br />Paredes
+        </a>
       </nav>
 
       {/* Barra inferior (móvil) */}

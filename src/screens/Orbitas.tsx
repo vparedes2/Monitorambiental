@@ -111,7 +111,10 @@ export default function Orbitas() {
   return (
     <div className="flex flex-col lg:flex-row lg:h-screen">
       <section className="relative h-[62vh] lg:h-auto lg:flex-1" aria-label="Globo con las órbitas de los satélites">
-        <Globo centro={[-62, -30]} zoom={1.6} onListo={(m) => { mapRef.current = m; setListo(true); }} />
+        <Globo centro={[-62, -30]} zoom={1.6} onListo={(m) => { mapRef.current = m; setListo(true); }}
+          tituloExport="Órbitas de los satélites de monitoreo"
+          subtituloExport={elegido ? `Traza y franja de ${elegido.nombre}` : undefined}
+          leyendaExport={[{ color: "#FF8A3D", texto: "VIIRS: focos térmicos" }, { color: "#8FE3F0", texto: "Sentinel-2: imagen óptica" }, { color: "#C9A46A", texto: "Sentinel-5P: gases" }, { color: "#8FE3F0", texto: "Recorrido próximos 100 min", forma: "linea" }]} />
         <div className="absolute left-4 top-4 sm:left-6 sm:top-6 pointer-events-none">
           <h1 className="titulo text-4xl sm:text-5xl font-semibold">Órbitas en vivo</h1>
           <p className="text-tenue text-sm mt-1 max-w-sm">Posición actual calculada con los elementos orbitales de CelesTrak. La línea punteada es el recorrido de los próximos 100 minutos.</p>

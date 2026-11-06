@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Layers } from "lucide-react";
+import { capturarMapa, componerLamina, descargarCanvas, nombreArchivo, type ItemLeyenda } from "../lib/exportar";
 import maplibregl, { Map as MLMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
@@ -115,10 +116,14 @@ interface Props {
   className?: string;
   /** Clases de posición del selector de mapa base */
   posicionSelector?: string;
+  /** Título y leyenda de la lámina PNG exportada */
+  tituloExport?: string;
+  subtituloExport?: string;
+  leyendaExport?: ItemLeyenda[];
 }
 
 /** Globo terrestre con imágenes satelitales reales (MapLibre, proyección globo) */
-export default function Globo({ centro, zoom, interactivo = true, onListo, className, posicionSelector }: Props) {
+export default function Globo({ centro, zoom, interactivo = true, onListo, className, posicionSelector, tituloExport, subtituloExport, leyendaExport }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const [baseId, setBaseId] = useState<string>(leerBase);
@@ -177,6 +182,25 @@ export default function Globo({ centro, zoom, interactivo = true, onListo, class
 
   // El contenedor externo posiciona; MapLibre fuerza position:relative en el interno
   const actual = MAPAS_BASE.find((b) => b.id === baseId) ?? MAPAS_BASE[0];
+  const exportarPng = async () => {
+    const map = mapRef.current;
+    if (!map) return;
+    setAbierto(false);
+    try {
+      const snap = await capturarMapa(map);
+      const c = map.getCenter();
+      const lamina = componerLamina(snap, {
+        titulo: tituloExport ?? "Monitor ambiental Vaca Muerta",
+        subtitulo: `${subtituloExport ? subtituloExport + ". " : ""}Mapa base: ${actual.nombre}`,
+        leyenda: leyendaExport,
+        centro: { lat: c.lat, lon: c.lng }
+      });
+      descargarCanvas(lamina, nombreArchivo("mapa-vaca-muerta", "png"));
+    } catch (e: any) {
+      setAviso(`No se pudo exportar el mapa: ${e.message}`);
+    }
+  };
+
   const abrirExterno = (destino: "earth" | "maps") => {
     const map = mapRef.current;
     if (!map) return;
@@ -206,6 +230,12 @@ export default function Globo({ centro, zoom, interactivo = true, onListo, class
                 </li>
               ))}
               <li className="border-t border-linea mt-1 pt-1">
+                <button onClick={exportarPng} className="w-full text-left px-3 py-2 hover:bg-noche/50">
+                  <span className="block text-sm text-lutita">Descargar este mapa (PNG)</span>
+                  <span className="block text-[11px] text-tenue leading-snug">Lámina con título, leyenda, fecha y firma.</span>
+                </button>
+              </li>
+              <li>
                 <button onClick={() => abrirExterno("earth")} className="w-full text-left px-3 py-2 hover:bg-noche/50">
                   <span className="block text-sm">Abrir esta vista en Google Earth ↗</span>
                   <span className="block text-[11px] text-tenue leading-snug">Imagen de mayor resolución y 3D, en otra pestaña.</span>
@@ -220,7 +250,7 @@ export default function Globo({ centro, zoom, interactivo = true, onListo, class
           )}
           <button onClick={() => setAbierto((v) => !v)} aria-expanded={abierto}
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs border border-linea bg-noche/85 text-hielo hover:border-hielo">
-            <Layers className="w-3.5 h-3.5" /> Mapa base: {actual.nombre}
+            <Layers className="w-3.5 h-3.5" /> Mapa base y exportar
           </button>
           {aviso && <p className="mt-1.5 max-w-xs text-[11px] text-llama bg-noche/85 px-2 py-1">{aviso}</p>}
         </div>

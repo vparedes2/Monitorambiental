@@ -251,7 +251,14 @@ export default function Imagenes() {
         </aside>
 
         <section className="relative h-[70vh] lg:h-auto lg:flex-1 order-1 lg:order-2" aria-label="Mapa con la imagen satelital elegida">
-          <Globo centro={[-69, -38.25]} zoom={6.6} onListo={(m) => { mapRef.current = m; setListo(true); }} />
+          <Globo centro={[-69, -38.25]} zoom={6.6} onListo={(m) => { mapRef.current = m; setListo(true); }}
+            tituloExport={capa.nombre}
+            subtituloExport={info ?? `${capa.satelite}, ${capa.resolucion}`}
+            leyendaExport={[
+              ...(capa.categorias ?? []).map((c) => ({ color: c.color, texto: c.texto })),
+              ...(capa.leyenda ? [{ color: "#888888", texto: `Escala de color: ${capa.leyenda.min} a ${capa.leyenda.max}` }] : []),
+              ...(verFocos ? [{ color: "#FF8A3D", texto: "Foco térmico NASA FIRMS (48 h)", forma: "circulo" as const }] : [])
+            ]} />
           <details open={leyendaAbierta} onToggle={(e) => setLeyendaAbierta((e.target as HTMLDetailsElement).open)}
             className="absolute left-4 top-4 right-4 sm:right-auto instrumento px-4 py-3 max-w-md">
             <summary className="font-medium cursor-pointer list-none flex items-start justify-between gap-3">

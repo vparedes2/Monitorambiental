@@ -4,7 +4,14 @@ import { motion, AnimatePresence } from "motion/react";
 import Globo, { setGeo } from "../components/Globo";
 import { useFirms, useTle, parseFechaFirms, usePrefiereMenosMovimiento } from "../lib/useData";
 import { prepararSatelites, posicion, proximaPasada, fmtCuenta, ANELO } from "../lib/orbits";
-import { SkipForward, RotateCcw } from "lucide-react";
+import { SkipForward, RotateCcw, FileDown } from "lucide-react";
+import { capturarMapa, generarInformePDF, descargarTexto, focosKml, focosCsv, nombreArchivo, AUTOR, type ItemLeyenda } from "../lib/exportar";
+
+const LEYENDA_INICIO: ItemLeyenda[] = [
+  { color: "#FF8A3D", texto: "Foco térmico NASA FIRMS (últimas 48 h)", forma: "circulo" },
+  { color: "#C9A46A", texto: "Cuenca Neuquina, área vigilada", forma: "linea" },
+  { color: "#8FE3F0", texto: "Satélite, posición al momento de exportar" }
+];
 
 const ACTOS = [
   { t: 0, titulo: "Órbita baja", detalle: "Vista desde ~830 km, la altura de los satélites VIIRS" },
@@ -165,6 +172,49 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
   const frpTotal = focos.reduce((a, f) => a + f.frp, 0);
   const sinCatastro = focos.filter((f) => !f.match).length;
 
+  const exportarInforme = async () => {
+    const map = mapRef.current;
+    let mapa: HTMLCanvasElement | undefined;
+    try { if (map) mapa = await capturarMapa(map); } catch { /* sin mapa */ }
+    generarInformePDF({
+      titulo: "Focos térmicos en Vaca Muerta",
+      subtitulo: `NASA FIRMS, VIIRS 375 m, últimas 48 h. ${focos.length} focos, ${frpTotal.toFixed(1)} MW de potencia radiativa total.`,
+      mapa,
+      leyenda: LEYENDA_INICIO,
+      secciones: [
+        {
+          titulo: "Resumen",
+          texto: [
+            `Se detectaron ${focos.length} focos térmicos dentro del recuadro de la Cuenca Neuquina (lat -37 a -39,5; lon -67,5 a -70,5) en las últimas 48 horas.`,
+            catastro === 0
+              ? "No hay catastro de instalaciones cargado: los focos no se asociaron a instalaciones."
+              : `${focos.length - sinCatastro} focos quedaron asociados a instalaciones del catastro y ${sinCatastro} no tienen instalación cargada dentro de la tolerancia.`,
+            "FIRMS detecta llamas y superficies calientes (antorchas, incendios, quemas). No mide caudal quemado ni venteo frío."
+          ]
+        },
+        {
+          titulo: "Detalle de focos",
+          tabla: {
+            columnas: ["Fecha y hora (UTC)", "Sensor", "Latitud", "Longitud", "FRP (MW)", "Clasificación"],
+            filas: [...focos].sort((a, b) => b.frp - a.frp).map((f) => [f.fecha, f.sensor.replace("NASA FIRMS ", ""), f.lat.toFixed(5), f.lon.toFixed(5), f.frp.toFixed(2), f.match ? `Asociado: ${f.instalacion ?? ""}` : "Sin instalación cerca"])
+          }
+        },
+        {
+          titulo: `Próximas pasadas sobre ${ANELO.nombre}`,
+          tabla: {
+            columnas: ["Satélite", "Función", "Inicio (hora local)", "Elevación máxima"],
+            filas: pasadas.map(({ s, pas }) => [s.nombre, s.rol, pas!.inicio.toLocaleString("es-AR", { dateStyle: "short", timeStyle: "short", hourCycle: "h23" } as Intl.DateTimeFormatOptions), `${Math.round(pas!.maxElev)}°`])
+          }
+        }
+      ],
+      metodo: "Focos: API pública de NASA FIRMS (VIIRS NOAA-20, NOAA-21 y Suomi NPP, productos de tiempo casi real). FRP: potencia radiativa del fuego. Pasadas: elementos orbitales de CelesTrak propagados con SGP4, umbral de 10° sobre el horizonte. Mapa base: imágenes satelitales de terceros según atribución.",
+      archivo: nombreArchivo("informe-focos-vaca-muerta", "pdf")
+    });
+  };
+  const exportarKml = () => descargarTexto(focosKml(focos), nombreArchivo("focos-firms-vaca-muerta", "kml"), "application/vnd.google-earth.kml+xml");
+  const exportarCsv = () => descargarTexto(focosCsv(focos), nombreArchivo("focos-firms-vaca-muerta", "csv"), "text/csv;charset=utf-8");
+  const exportes = { exportarInforme, exportarKml, exportarCsv };
+
   const actoActual = [...ACTOS].reverse().find((a) => progreso >= a.t) ?? ACTOS[0];
   const timecode = (p: number) => {
     const ms = p * DURACION_MS;
@@ -176,7 +226,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
     <div className="relative">
       {/* Escenario del globo */}
       <section className="relative h-[78vh] min-h-[520px] lg:h-[calc(100vh-0px)] overflow-hidden bg-noche" aria-label="Globo terrestre con focos térmicos de Vaca Muerta">
-        <Globo centro={[-42, -18]} zoom={1.15} onListo={alListo} posicionSelector="left-4 sm:left-8 bottom-24" />
+        <Globo centro={[-42, -18]} zoom={1.15} onListo={alListo} posicionSelector="left-4 sm:left-8 bottom-24" tituloExport="Focos térmicos en Vaca Muerta" subtituloExport="NASA FIRMS, últimas 48 h" leyendaExport={LEYENDA_INICIO} />
 
         {/* Viñeta para legibilidad */}
         <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at center, transparent 45%, rgba(10,22,40,.75) 100%), linear-gradient(to bottom, rgba(10,22,40,.85) 0%, transparent 32%, transparent 78%, rgba(10,22,40,.9) 100%)" }} />
@@ -238,7 +288,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
               transition={{ duration: 0.5 }}
               className="hidden lg:block absolute right-8 top-8 w-[340px] instrumento p-5"
             >
-              <PanelLectura {...{ focos: focos.length, frpTotal, sinCatastro, catastro, estado, histo, maxBin, irA }} />
+              <PanelLectura {...{ focos: focos.length, frpTotal, sinCatastro, catastro, estado, histo, maxBin, irA, ...exportes }} />
             </motion.aside>
           )}
         </AnimatePresence>
@@ -246,7 +296,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
 
       {/* Panel de lectura en móvil */}
       <div className="lg:hidden px-4 py-5 instrumento mx-3 -mt-2 relative z-10">
-        <PanelLectura {...{ focos: focos.length, frpTotal, sinCatastro, catastro, estado, histo, maxBin, irA }} />
+        <PanelLectura {...{ focos: focos.length, frpTotal, sinCatastro, catastro, estado, histo, maxBin, irA, ...exportes }} />
       </div>
 
       {/* Próximas pasadas */}
@@ -270,11 +320,18 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
           ))}
         </div>
       </section>
+
+      <footer className="px-4 sm:px-8 pb-10 max-w-6xl text-xs text-tenue border-t border-linea pt-5">
+        <p>
+          Desarrollado por <a href="https://victorparedes.ar" target="_blank" rel="noopener" className="text-lutita hover:underline">{AUTOR.nombre}</a>, {AUTOR.rol}.
+        </p>
+        <p className="mt-1">{AUTOR.aviso} Datos: NASA FIRMS, Copernicus (ESA), CelesTrak.</p>
+      </footer>
     </div>
   );
 }
 
-function PanelLectura({ focos, frpTotal, sinCatastro, catastro, estado, histo, maxBin, irA }: any) {
+function PanelLectura({ focos, frpTotal, sinCatastro, catastro, estado, histo, maxBin, irA, exportarInforme, exportarKml, exportarCsv }: any) {
   return (
     <div>
       <p className="text-xs text-tenue">Últimas 48 h, NASA FIRMS (VIIRS 375 m)</p>
@@ -319,6 +376,13 @@ function PanelLectura({ focos, frpTotal, sinCatastro, catastro, estado, histo, m
       <div className="mt-4 flex gap-2">
         <button onClick={() => irA("focos")} className="flex-1 px-3 py-2 text-sm bg-llama text-noche font-semibold hover:brightness-110">Analizar focos</button>
         <button onClick={() => irA("focos")} className="px-3 py-2 text-sm border border-linea hover:border-lutita text-lutita">Cargar catastro</button>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+        <button onClick={exportarInforme} disabled={!focos} className="flex items-center gap-1.5 px-2.5 py-1.5 border border-linea text-hielo hover:border-hielo disabled:opacity-50">
+          <FileDown className="w-3.5 h-3.5" /> Informe PDF
+        </button>
+        <button onClick={exportarKml} disabled={!focos} className="px-2.5 py-1.5 border border-linea text-hielo hover:border-hielo disabled:opacity-50">Focos KML (Google Earth)</button>
+        <button onClick={exportarCsv} disabled={!focos} className="px-2.5 py-1.5 border border-linea text-hielo hover:border-hielo disabled:opacity-50">CSV</button>
       </div>
     </div>
   );
