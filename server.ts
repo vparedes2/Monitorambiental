@@ -965,6 +965,39 @@ const handlerBarrido = async (zonaId: string, res: any) => {
   }
 };
 
+// Localidades con coordenadas reales (OpenStreetMap), con caché de 7 días
+const NOMBRES_LOCALIDADES = ["Añelo", "Tratayén", "Sauzal Bonito", "San Patricio del Chañar", "Rincón de los Sauces", "Neuquén", "Centenario", "Vista Alegre Norte", "Vista Alegre Sur", "Plottier", "Cutral Có", "Plaza Huincul", "Octavio Pico", "Barrancas", "Buta Ranquil", "Senillosa", "Cinco Saltos", "Catriel", "Chos Malal", "Paso Aguerre"];
+let cacheLocalidades: { t: number; data: any } | null = null;
+app.get("/api/localidades", async (_req, res) => {
+  try {
+    if (cacheLocalidades && Date.now() - cacheLocalidades.t < 7 * 86400000) return res.json(cacheLocalidades.data);
+    const patron = NOMBRES_LOCALIDADES.join("|");
+    const q = `[out:json][timeout:30];node["place"~"city|town|village|hamlet"]["name"~"^(${patron})$"](-39.4,-70.6,-36.7,-67.6);out;`;
+    const r = await fetch("https://overpass-api.de/api/interpreter", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded", "User-Agent": "monitor-ambiental-vaca-muerta" },
+      body: "data=" + encodeURIComponent(q)
+    });
+    if (!r.ok) throw new Error(`OpenStreetMap (Overpass) respondió HTTP ${r.status}`);
+    const d: any = await r.json();
+    const vistos = new Set<string>();
+    const localidades = (d.elements || [])
+      .filter((e: any) => { const k = e.tags?.name; if (!k || vistos.has(k)) return false; vistos.add(k); return true; })
+      .map((e: any) => ({
+        nombre: e.tags.name,
+        lat: e.lat,
+        lon: e.lon,
+        poblacion: Number(String(e.tags.population || "").replace(/\D/g, "")) || null,
+        tipo: e.tags.place
+      }));
+    const data = { fuente: "OpenStreetMap (© colaboradores de OpenStreetMap, ODbL)", localidades };
+    cacheLocalidades = { t: Date.now(), data };
+    return res.json(data);
+  } catch (e: any) {
+    return res.status(502).json({ error: e.message || "No se pudieron obtener las localidades" });
+  }
+});
+
 app.get("/api/barrido/zonas", (_req, res) => res.json(Object.values(ZONAS_BARRIDO).map(({ id, nombre, tipo }) => ({ id, nombre, tipo }))));
 app.get("/api/barrido/rio-anelo", (_req, res) => handlerBarrido("anelo", res));
 app.get("/api/barrido/:zona", (req, res) => handlerBarrido(req.params.zona, res));
@@ -1806,7 +1839,7 @@ Realiza una auditoría técnica y regulatoria exhaustiva sobre la antorcha/vente
 - Eficiencia de combustión medida: ${eff}%
 - Temperatura de llama: ${flameTempC}°C (Altura antorcha: ${stackHeightM} m)
 - Localidad poblada más cercana: ${nearestTown} a ${nearestTownDistanceKm} km
-- Viento local de dispersión: ${windSpeed} km/h dirección ${windDirection}
+- Viento local de dispersión: ${windSpeed ? `${windSpeed} km/h dirección ${windDirection}` : "sin dato medido (no inventar valores de viento)"}
 
 Evalúa de acuerdo a:
 1) Resolución SEN 236/93 y 327/94 (Límites de quema y venteo no autorizado).

@@ -32,7 +32,13 @@ import {
   HelpCircle
 } from "lucide-react";
 import { VenteoAuditResponse, GeoJsonFeatureCollection } from "../types";
-import { POPULATED_TOWNS } from "../venteoPresets";
+// Localidades con coordenadas reales desde OpenStreetMap (antes estaban cargadas a mano y había errores)
+interface Localidad { nombre: string; lat: number; lon: number; poblacion: number | null }
+const distKm = (a: number, b: number, c: number, d: number) => {
+  const R = 6371, dLat = ((c - a) * Math.PI) / 180, dLon = ((d - b) * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos((a * Math.PI) / 180) * Math.cos((c * Math.PI) / 180) * Math.sin(dLon / 2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+};
 import { 
   ejecutarCruceEspacialSatelital, 
   CruceEspacialVenteo, 
@@ -156,6 +162,10 @@ export default function VenteosMonitorModule() {
   const plumesLayerRef = useRef<L.FeatureGroup | null>(null);
   const thermalLayerRef = useRef<L.FeatureGroup | null>(null);
   const townsLayerRef = useRef<L.FeatureGroup | null>(null);
+  const [localidades, setLocalidades] = useState<Localidad[]>([]);
+  useEffect(() => {
+    fetch("/api/localidades").then((r) => r.json()).then((d) => setLocalidades(d.localidades || [])).catch(() => {});
+  }, []);
   const cadastralLayerRef = useRef<L.FeatureGroup | null>(null);
   const vectorConnectorsLayerRef = useRef<L.FeatureGroup | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
@@ -361,10 +371,14 @@ export default function VenteosMonitorModule() {
           sensor: det.sensor,
           fechaUtc: det.fecha_hora_utc,
           stackHeightM: sig ? sig.antorcha_altura_m : 35,
-          nearestTown: "Añelo",
-          nearestTownDistanceKm: 14.5,
-          windSpeed: 28,
-          windDirection: "SW"
+          ...(() => {
+            const cerca = localidades
+              .map((l) => ({ l, d: distKm(det.latitud_satelital, det.longitud_satelital, l.lat, l.lon) }))
+              .sort((a, b) => a.d - b.d)[0];
+            return cerca ? { nearestTown: cerca.l.nombre, nearestTownDistanceKm: Math.round(cerca.d * 10) / 10 } : {};
+          })(),
+          windSpeed: null,
+          windDirection: null
         })
       });
       if (!res.ok) {
@@ -482,8 +496,8 @@ export default function VenteosMonitorModule() {
     if (townsLayerRef.current) {
       townsLayerRef.current.clearLayers();
       if (showTownBuffers) {
-        POPULATED_TOWNS.forEach((town) => {
-          L.circle([town.latitude, town.longitude], {
+        localidades.forEach((town) => {
+          L.circle([town.lat, town.lon], {
             radius: 1200,
             color: "#38bdf8",
             fillColor: "#0284c7",
@@ -492,7 +506,7 @@ export default function VenteosMonitorModule() {
             dashArray: "4, 4"
           }).addTo(townsLayerRef.current!);
 
-          L.circle([town.latitude, town.longitude], {
+          L.circle([town.lat, town.lon], {
             radius: 5000,
             color: "#0284c7",
             fillColor: "#0284c7",
@@ -506,14 +520,14 @@ export default function VenteosMonitorModule() {
             html: `
               <div class="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-slate-950/95 border border-sky-400/50 shadow-xl backdrop-blur-md pointer-events-none transform -translate-x-1/2 -translate-y-1/2">
                 <span class="w-2 h-2 rounded-full bg-sky-400"></span>
-                <span class="text-[10px] font-mono font-black text-sky-200 uppercase whitespace-nowrap">${town.name.split(" (")[0]}</span>
-                <span class="text-[8.5px] text-slate-400 font-mono">(${town.population.toLocaleString("es-AR")} hab)</span>
+                <span class="text-[10px] font-mono font-black text-sky-200 uppercase whitespace-nowrap">${town.nombre}</span>
+                ${town.poblacion ? `<span class="text-[8.5px] text-slate-400 font-mono">(${town.poblacion.toLocaleString("es-AR")} hab)</span>` : ""}
               </div>
             `,
             iconSize: [0, 0]
           });
 
-          L.marker([town.latitude, town.longitude], { icon: townIcon }).addTo(townsLayerRef.current!);
+          L.marker([town.lat, town.lon], { icon: townIcon }).addTo(townsLayerRef.current!);
         });
       }
     }
@@ -794,7 +808,7 @@ export default function VenteosMonitorModule() {
       });
     }
 
-  }, [filteredCruces, selectedCruce, showPlumes, showThermalCircles, showTownBuffers, showCadastralTolerances, showGeoportalSigLayer, instalacionesSig]);
+  }, [filteredCruces, selectedCruce, showPlumes, showThermalCircles, showTownBuffers, showCadastralTolerances, showGeoportalSigLayer, instalacionesSig, localidades]);
 
   // Center on Selected Detection
   const centerOnCruce = (cruce: CruceEspacialVenteo, zoomLevel: number = 14) => {
