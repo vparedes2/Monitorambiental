@@ -49,94 +49,68 @@ type BasemapType = "google-hybrid" | "google-satellite" | "esri-satellite" | "ca
 type SensorFilterType = "all" | "firms" | "sentinel";
 type CorrelationFilterType = "all" | "match" | "anomalia" | "critico";
 
-// Preset GeoJSON layers for 1-click loading and testing
-const PRESET_GEOJSON_EXPANSION_NORTE = JSON.stringify({
-  type: "FeatureCollection",
-  name: "Expansion_Norte_Vaca_Muerta_2026",
-  features: [
-    {
-      type: "Feature",
-      id: "PAD_RM_001",
-      geometry: {
-        type: "Point",
-        coordinates: [-68.9140, -37.6420]
-      },
-      properties: {
-        id: "PAD_RM_001",
-        nombre: "Pad Rincón del Mangrullo RM-01 Multipozo",
-        tipo: "Pad de Producción / Pozo",
-        operador: "YPF / Pampa Energía",
-        bloque_area: "Rincón del Mangrullo",
-        radio_tolerancia_metros: 120,
-        cupo_sen_m3d: 25000,
-        descripcion_catastral: "Pad de producción no convencional recién incorporado al catastro provincial en Rincón del Mangrullo."
-      }
-    },
-    {
-      type: "Feature",
-      id: "PAD_LT_002",
-      geometry: {
-        type: "Point",
-        coordinates: [-68.5130, -38.0124]
-      },
-      properties: {
-        id: "PAD_LT_002",
-        nombre: "Batería Temprana Los Toldos II Oeste",
-        tipo: "Batería Colectora",
-        operador: "Tecpetrol",
-        bloque_area: "Los Toldos II Oeste",
-        radio_tolerancia_metros: 250,
-        cupo_sen_m3d: 35000,
-        descripcion_catastral: "Batería de separación primaria y antorcha sonic operada por Tecpetrol."
-      }
-    }
-  ]
-}, null, 2);
-
-const PRESET_GEOJSON_POLIGONO_CENTRAL = JSON.stringify({
-  type: "FeatureCollection",
-  name: "Poligono_Central_Anelo_Pads_Nuevos",
-  features: [
-    {
-      type: "Feature",
-      id: "PAD_BC_005",
-      geometry: {
-        type: "Point",
-        coordinates: [-69.2150, -39.1240]
-      },
-      properties: {
-        id: "PAD_BC_005",
-        nombre: "Batería Colectora Bajada Colorada BC-5",
-        tipo: "Batería Colectora",
-        operador: "Pan American Energy",
-        bloque_area: "Bajada Colorada",
-        radio_tolerancia_metros: 250,
-        cupo_sen_m3d: 20000,
-        descripcion_catastral: "Instalación catastrada en sector sur de la cuenca linderos a Picún Leufú."
-      }
-    }
-  ]
-}, null, 2);
-
-// Associated facility imagery
-const FACILITY_IMAGES: Record<string, string> = {
-  "PTC_LOMA_CAMPANA": "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=80",
-  "CPF_LOMA_CAMPANA": "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&auto=format&fit=crop&q=80",
-  "CPF_FORTIN_DE_PIEDRA": "https://images.unsplash.com/photo-1542382257-80dedb725088?w=800&auto=format&fit=crop&q=80",
-  "CPF_EL_OREJANO": "https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?w=800&auto=format&fit=crop&q=80",
-  "BATERIA_CRUZ_DE_LORENA": "https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=800&auto=format&fit=crop&q=80",
-  "CPF_LA_CALERA": "https://images.unsplash.com/photo-1574689231358-39e25d2ea61b?w=800&auto=format&fit=crop&q=80",
-  "BATERIA_BANDURRIA_SUR": "https://images.unsplash.com/photo-1516937941344-00b4e0337589?w=800&auto=format&fit=crop&q=80",
-  "BS_FL4": "https://images.unsplash.com/photo-1516937941344-00b4e0337589?w=800&auto=format&fit=crop&q=80",
-  "TGS_TRATAYEN": "https://images.unsplash.com/photo-1509391365360-2e959784a276?w=800&auto=format&fit=crop&q=80",
-  "CPF_BAJADA_DEL_PALO_OESTE": "https://images.unsplash.com/photo-1578328819058-b69f3a3b0f6b?w=800&auto=format&fit=crop&q=80"
+// Vista satelital real (Esri World Imagery) centrada en la coordenada indicada
+const imagenSatelital = (lat: number, lon: number, radioM = 600) => {
+  const dLat = radioM / 111320;
+  const dLon = radioM / (111320 * Math.cos((lat * Math.PI) / 180));
+  const bbox = [lon - dLon * 1.6, lat - dLat, lon + dLon * 1.6, lat + dLat].join(",");
+  return `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/export?bbox=${bbox}&bboxSR=4326&imageSR=3857&size=800,500&format=jpg&f=image`;
 };
+
+const CATASTRO_LS_KEY = "vm_catastro_usuario_v1";
+const leerCatastroLocal = (): any | null => {
+  try { const t = localStorage.getItem(CATASTRO_LS_KEY); return t ? JSON.parse(t) : null; } catch { return null; }
+};
+const guardarCatastroLocal = (store: any) => {
+  try { localStorage.setItem(CATASTRO_LS_KEY, JSON.stringify(store)); } catch { /* sin almacenamiento */ }
+};
+
+type EstadoFirmsUI = { estado: "ok" | "sin_clave" | "error"; mensaje: string; consultado_utc: string | null; total: number } | null;
+
+// Marcador vacío para cuando todavía no hay detecciones reales
+const CRUCE_VACIO: CruceEspacialVenteo = {
+  id: "sin-detecciones",
+  deteccion_satelital: {
+    id_deteccion: "SIN-DATOS",
+    sensor: "Sin detecciones",
+    banda_espectral: "-",
+    resolucion_espacial_m: 0,
+    latitud_satelital: -38.352,
+    longitud_satelital: -68.789,
+    frp_mw: 0,
+    temperatura_brillo_k: 0,
+    temperatura_llama_c: null,
+    fecha_hora_utc: "-",
+    confianza_deteccion: 0,
+    tasa_quema_estimada_m3d: null,
+    eficiencia_combustion_est: null,
+    es_venteo_frio: false
+  },
+  tipo_correlacion: "ANOMALIA_NO_CATASTRADA",
+  match_catastral: false,
+  distancia_metros_a_planta: 0,
+  tolerancia_catastral_m: 0,
+  etiqueta_clasificacion: "Sin detecciones",
+  calificacion_posicionamiento: "",
+  alerta_confusion_cargadero: false,
+  estado_regulatorio: "Operativo",
+  exceso_cupo_sen: false,
+  porcentaje_exceso_cupo: 0,
+  emisiones_estimadas: { ch4_fugitivo_ton_ano: null, co2_ton_ano: null, so2_kg_dia: null, nox_kg_dia: null },
+  enlaces_inspeccion_hd: { google_maps_url: "", google_earth_url: "" }
+};
+
+const nd = (v: number | null | undefined, suf = "") =>
+  v === null || v === undefined ? "N/D" : `${v.toLocaleString("es-AR")}${suf}`;
 
 export default function VenteosMonitorModule() {
   // Live spatial join detections data and dynamic GeoJSON store
-  const [cruces, setCruces] = useState<CruceEspacialVenteo[]>(() => ejecutarCruceEspacialSatelital());
-  const [selectedCruce, setSelectedCruce] = useState<CruceEspacialVenteo>(() => cruces[0]);
-  const [instalacionesSig, setInstalacionesSig] = useState<InstalacionSigOficial[]>(() => getInstalacionesSigOficiales());
+  const [cruces, setCruces] = useState<CruceEspacialVenteo[]>([]);
+  const [selectedCruceState, setSelectedCruce] = useState<CruceEspacialVenteo | undefined>(undefined);
+  const selectedCruce: CruceEspacialVenteo = selectedCruceState ?? CRUCE_VACIO;
+  const hayDetecciones = cruces.length > 0;
+  const [instalacionesSig, setInstalacionesSig] = useState<InstalacionSigOficial[]>([]);
+  const [estadoFirms, setEstadoFirms] = useState<EstadoFirmsUI>(null);
   
   // Filtering & Layer state
   const [sensorFilter, setSensorFilter] = useState<SensorFilterType>("all");
@@ -187,34 +161,42 @@ export default function VenteosMonitorModule() {
   const tileLayerRef = useRef<L.TileLayer | null>(null);
 
   // Fetch live satellite spatial join from server
-  const refreshSatelital = async () => {
+  const refreshSatelital = async (forzar = false) => {
     setIsRefreshing(true);
     try {
-      const [resSat, resSig] = await Promise.all([
-        fetch("/api/venteos/monitoreo-satelital-en-vivo"),
-        fetch("/api/geoportal/instalaciones")
-      ]);
-
+      // Si el servidor se reinició y perdió el catastro, se re-sube la copia del navegador
+      const resSig = await fetch("/api/geoportal/instalaciones");
       if (resSig.ok) {
         const sigData = await resSig.json();
-        if (sigData.instalaciones) {
+        const local = leerCatastroLocal();
+        if ((sigData.instalaciones?.length || 0) === 0 && local?.features?.length) {
+          const r = await fetch("/api/geoportal/cargar-capa", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ geojson: local, mode: "replace" })
+          });
+          const d = await r.json();
+          if (d.instalaciones) setInstalacionesSig(d.instalaciones);
+        } else if (sigData.instalaciones) {
           setInstalacionesSig(sigData.instalaciones);
         }
       }
 
+      const resSat = await fetch(`/api/venteos/monitoreo-satelital-en-vivo${forzar ? "?forzar=1" : ""}`);
       if (resSat.ok) {
         const satData = await resSat.json();
+        if (satData.estado_firms) setEstadoFirms(satData.estado_firms);
         if (satData.cruces_espaciales && Array.isArray(satData.cruces_espaciales)) {
           setCruces(satData.cruces_espaciales);
           // Keep current selection if exists
           setSelectedCruce((prev) => {
-            const found = satData.cruces_espaciales.find((c: CruceEspacialVenteo) => c.id === prev.id);
+            const found = prev && satData.cruces_espaciales.find((c: CruceEspacialVenteo) => c.id === prev.id);
             return found || satData.cruces_espaciales[0];
           });
         }
       }
     } catch {
-      // Fallback already loaded synchronously
+      // Sin conexión con el servidor: no se muestran datos simulados
     } finally {
       setIsRefreshing(false);
     }
@@ -241,7 +223,7 @@ export default function VenteosMonitorModule() {
   });
 
   // KPI Aggregates
-  const totalBurnRate = cruces.reduce((acc, c) => acc + c.deteccion_satelital.tasa_quema_estimada_m3d, 0);
+  const totalBurnRate = cruces.reduce((acc, c) => acc + (c.deteccion_satelital.tasa_quema_estimada_m3d ?? 0), 0);
   const totalFRP = cruces.reduce((acc, c) => acc + c.deteccion_satelital.frp_mw, 0);
   const criticalCount = cruces.filter((c) => c.estado_regulatorio === "Crítico").length;
   const directMatches = cruces.filter((c) => c.match_catastral).length;
@@ -277,6 +259,7 @@ export default function VenteosMonitorModule() {
       });
 
       if (data.instalaciones) setInstalacionesSig(data.instalaciones);
+      if (data.geojson_store) guardarCatastroLocal(data.geojson_store);
       if (data.cruces_actualizados) {
         setCruces(data.cruces_actualizados);
         setSelectedCruce(data.cruces_actualizados[0]);
@@ -301,11 +284,12 @@ export default function VenteosMonitorModule() {
       const res = await fetch("/api/geoportal/reset", { method: "POST" });
       const data = await res.json();
       if (data.instalaciones) setInstalacionesSig(data.instalaciones);
+      if (data.geojson_store) guardarCatastroLocal(data.geojson_store);
       if (data.cruces_espaciales) {
         setCruces(data.cruces_espaciales);
         setSelectedCruce(data.cruces_espaciales[0]);
       }
-      setUploadFeedback({ type: "success", msg: "Catastro restablecido a la base oficial de SEN / IDENEU." });
+      setUploadFeedback({ type: "success", msg: "Catastro vaciado. Cargue su KML o GeoJSON verificado." });
       setTimeout(() => {
         setShowUploadModal(false);
         setUploadFeedback(null);
@@ -334,7 +318,7 @@ export default function VenteosMonitorModule() {
           latitud: det.latitud_satelital,
           longitud: det.longitud_satelital,
           radio_tolerancia_metros: newPadType.includes("Troncal") ? 400 : newPadType.includes("Batería") ? 250 : 120,
-          cupo_sen_m3d: 15000
+          cupo_sen_m3d: 0
         })
       });
 
@@ -373,6 +357,9 @@ export default function VenteosMonitorModule() {
           burnRateM3Day: det.tasa_quema_estimada_m3d,
           combustionEfficiency: det.eficiencia_combustion_est,
           flameTempC: det.temperatura_llama_c,
+          frpMW: det.frp_mw,
+          sensor: det.sensor,
+          fechaUtc: det.fecha_hora_utc,
           stackHeightM: sig ? sig.antorcha_altura_m : 35,
           nearestTown: "Añelo",
           nearestTownDistanceKm: 14.5,
@@ -703,6 +690,8 @@ export default function VenteosMonitorModule() {
         filteredCruces.forEach((c) => {
           const det = c.deteccion_satelital;
           const { lat: satLat, lon: satLon } = normalizarCoordenadasCuenca(det.latitud_satelital, det.longitud_satelital);
+          // Sin tasa de quema medida no se dibuja pluma (FIRMS no la provee)
+          if (det.tasa_quema_estimada_m3d === null) return;
           const plumeLengthKm = (det.tasa_quema_estimada_m3d / 10000) * 1.8;
           const { dLat, dLon } = getWindDisplacement("SW", plumeLengthKm);
           const endLat = satLat + dLat;
@@ -828,7 +817,7 @@ export default function VenteosMonitorModule() {
 
   const currentDet = selectedCruce.deteccion_satelital;
   const currentSig = selectedCruce.instalacion_sig;
-  const currentImage = (currentSig && FACILITY_IMAGES[currentSig.codigo_sig]) || FACILITY_IMAGES["CPF_LOMA_CAMPANA"];
+  const currentImage = imagenSatelital(currentDet.latitud_satelital, currentDet.longitud_satelital);
 
   return (
     <div className={`transition-all duration-300 ${
@@ -898,7 +887,7 @@ export default function VenteosMonitorModule() {
             </div>
 
             <button
-              onClick={refreshSatelital}
+              onClick={() => refreshSatelital(true)}
               disabled={isRefreshing}
               className="p-2.5 bg-slate-950 border border-slate-800 hover:border-cyan-500/50 text-cyan-300 rounded-xl transition-all cursor-pointer"
               title="Actualizar datos satelitales en vivo"
@@ -924,6 +913,19 @@ export default function VenteosMonitorModule() {
               )}
             </button>
           </div>
+        </div>
+
+        {/* Estado real de las fuentes de datos */}
+        <div className={`mt-3 p-2.5 rounded-xl border text-[11px] font-mono ${
+          estadoFirms?.estado === "ok" ? "border-emerald-500/30 bg-emerald-500/5 text-emerald-300"
+          : estadoFirms?.estado === "error" ? "border-red-500/40 bg-red-500/10 text-red-300"
+          : "border-amber-500/40 bg-amber-500/10 text-amber-300"}`}>
+          <b>NASA FIRMS:</b> {estadoFirms ? estadoFirms.mensaje : "consultando…"}
+          {estadoFirms?.consultado_utc && <span className="text-slate-400"> · consultado {new Date(estadoFirms.consultado_utc).toLocaleString("es-AR")}</span>}
+          {" · "}<b>Catastro:</b> {instalacionesSig.length === 0
+            ? "vacío — cargue su KML de Google Earth para clasificar los focos"
+            : `${instalacionesSig.length} instalaciones cargadas por usted`}
+          <span className="block text-slate-400 mt-0.5">FIRMS detecta llamas (antorchas, incendios). No mide caudal, eficiencia ni venteo frío: esos campos se muestran como N/D.</span>
         </div>
 
         {/* Filter Bar & Layer Selectors */}
@@ -1076,6 +1078,7 @@ export default function VenteosMonitorModule() {
         <div ref={mapContainerRef} className="w-full h-full z-10" />
 
         {/* Floating Telemetry & Coordinates Overlay */}
+        {hayDetecciones && (
         <div className="absolute top-4 left-4 z-20 pointer-events-none flex flex-col gap-2">
           <div className="bg-slate-950/95 border border-slate-800 p-2.5 rounded-xl backdrop-blur-md shadow-2xl">
             <div className="flex items-center gap-2">
@@ -1122,6 +1125,7 @@ export default function VenteosMonitorModule() {
             </a>
           </div>
         </div>
+        )}
 
         {/* Floating Bottom Flare Selector Bar */}
         <div className="absolute bottom-4 left-4 right-4 lg:right-auto lg:max-w-2xl z-20 pointer-events-auto">
@@ -1163,7 +1167,7 @@ export default function VenteosMonitorModule() {
         </div>
 
         {/* Telemetry Detail Drawer for the Selected Cruce (Floating right) */}
-        {showDrawer && selectedCruce && (
+        {showDrawer && hayDetecciones && (
           <div className="absolute top-4 right-4 bottom-4 w-full sm:w-[440px] z-30 pointer-events-auto flex flex-col bg-slate-950/95 border border-slate-800 rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden animate-fade-in">
             
             {/* Drawer Header */}
@@ -1344,7 +1348,7 @@ export default function VenteosMonitorModule() {
                     Exceso de Venteo sobre Cupo SEN
                   </div>
                   <p className="leading-snug text-[11.5px]">
-                    Quema estimada de <b>{currentDet.tasa_quema_estimada_m3d.toLocaleString("es-AR")} m³/día</b> excede el cupo provincial autorizado ({currentSig?.cupo_sen_m3d.toLocaleString("es-AR")} m³/día) en un <b>+{selectedCruce.porcentaje_exceso_cupo}%</b>.
+                    Quema estimada de <b>{nd(currentDet.tasa_quema_estimada_m3d)} m³/día</b> excede el cupo cargado ({nd(currentSig?.cupo_sen_m3d)} m³/día) en un <b>+{selectedCruce.porcentaje_exceso_cupo}%</b>.
                   </p>
                 </div>
               )}
@@ -1367,15 +1371,15 @@ export default function VenteosMonitorModule() {
                 <div className="bg-slate-900/80 border border-slate-800 p-2.5 rounded-xl">
                   <span className="text-[9px] text-slate-400 uppercase block">Tasa Quema Estimada</span>
                   <span className="text-sm font-black text-amber-400">
-                    {currentDet.tasa_quema_estimada_m3d.toLocaleString("es-AR")} <span className="text-[9px] text-slate-400">m³/d</span>
+                    {nd(currentDet.tasa_quema_estimada_m3d)} <span className="text-[9px] text-slate-400">m³/d</span>
                   </span>
-                  <span className="text-[8.5px] text-slate-500 block mt-0.5">Cupo SEN: {currentSig?.cupo_sen_m3d.toLocaleString("es-AR") || "15.000"}</span>
+                  <span className="text-[8.5px] text-slate-500 block mt-0.5">{currentDet.tasa_quema_estimada_m3d === null ? "FIRMS no mide caudal" : `Cupo: ${currentSig?.cupo_sen_m3d ? currentSig.cupo_sen_m3d.toLocaleString("es-AR") : "sin dato"}`}</span>
                 </div>
 
                 <div className="bg-slate-900/80 border border-slate-800 p-2.5 rounded-xl">
                   <span className="text-[9px] text-slate-400 uppercase block">Eficiencia Combustión</span>
-                  <span className={`text-sm font-black ${currentDet.eficiencia_combustion_est < 90 ? "text-red-400" : "text-emerald-400"}`}>
-                    {currentDet.eficiencia_combustion_est}%
+                  <span className={`text-sm font-black ${currentDet.eficiencia_combustion_est !== null && currentDet.eficiencia_combustion_est < 90 ? "text-red-400" : "text-slate-200"}`}>
+                    {nd(currentDet.eficiencia_combustion_est, "%")}
                   </span>
                   <span className="text-[8.5px] text-slate-500 block mt-0.5">Exigible: 98.0%</span>
                 </div>
@@ -1383,7 +1387,7 @@ export default function VenteosMonitorModule() {
                 <div className="bg-slate-900/80 border border-slate-800 p-2.5 rounded-xl">
                   <span className="text-[9px] text-slate-400 uppercase block">Temp. Llama / Brillo</span>
                   <span className="text-sm font-black text-slate-200">
-                    {currentDet.temperatura_llama_c}°C
+                    {nd(currentDet.temperatura_llama_c, "°C")}
                   </span>
                   <span className="text-[8.5px] text-slate-500 block mt-0.5">Brillo: {currentDet.temperatura_brillo_k} K</span>
                 </div>
@@ -1527,48 +1531,28 @@ export default function VenteosMonitorModule() {
             {/* Modal Content */}
             <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs font-sans">
               
-              {/* Presets Bar */}
-              <div>
-                <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider block mb-2">
-                  1. Cargar Capa Rápida (Presets de la Cuenca):
+              {/* Cómo armar el catastro */}
+              <div className="p-3 bg-slate-950/70 border border-teal-500/30 rounded-xl text-[11px] text-slate-300 space-y-1.5">
+                <span className="text-[10px] font-mono font-bold text-teal-300 uppercase tracking-wider block">
+                  1. Armar el catastro en Google Earth (coordenadas reales)
                 </span>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  <button
-                    onClick={() => {
-                      setGeoJsonInput(PRESET_GEOJSON_EXPANSION_NORTE);
-                      setUploadMode("merge");
-                    }}
-                    className="p-2.5 bg-slate-950 hover:bg-slate-850 border border-teal-500/30 hover:border-teal-400 text-teal-300 rounded-xl text-left font-mono transition-all cursor-pointer"
-                  >
-                    <span className="font-black text-[11px] block text-teal-200">📍 Expansión Norte: Rincón del Mangrullo & Los Toldos</span>
-                    <span className="text-[9.5px] text-slate-400 block mt-0.5">Incorpora Pad RM-01 y Batería LT-02 (2 Locaciones)</span>
-                  </button>
-
-                  <button
-                    onClick={() => {
-                      setGeoJsonInput(PRESET_GEOJSON_POLIGONO_CENTRAL);
-                      setUploadMode("merge");
-                    }}
-                    className="p-2.5 bg-slate-950 hover:bg-slate-850 border border-amber-500/30 hover:border-amber-400 text-amber-300 rounded-xl text-left font-mono transition-all cursor-pointer"
-                  >
-                    <span className="font-black text-[11px] block text-amber-200">🛢️ Sector Bajada Colorada & Sur</span>
-                    <span className="text-[9.5px] text-slate-400 block mt-0.5">Incorpora Batería Colectora BC-5</span>
-                  </button>
-                </div>
+                <p>a) Ponga un marcador sobre cada planta, batería, pad o cargadero. En el nombre incluya el tipo: <b>PTC</b>, <b>CPF</b>, <b>Planta</b>, <b>Batería</b>, <b>Compresora</b>, <b>Cargadero</b>, <b>EPF</b> o <b>Pad</b> (define la tolerancia: 400 / 250 / 200 / 120 m).</p>
+                <p>b) Agrúpelos en una carpeta, clic derecho → <b>Guardar lugar como… → KML</b> (no KMZ).</p>
+                <p>c) Suba ese .kml acá abajo. Queda guardado en el servidor y en este navegador.</p>
               </div>
 
               {/* GeoJSON Input Area */}
               <div>
                 <div className="flex justify-between items-center mb-1.5">
                   <span className="text-[10px] font-mono font-bold text-slate-400 uppercase tracking-wider">
-                    2. O Pegar Contenido GeoJSON (FeatureCollection o Feature[]):
+                    2. O pegar contenido KML o GeoJSON:
                   </span>
                   <label className="text-[10px] font-mono text-cyan-400 hover:text-cyan-300 cursor-pointer flex items-center gap-1">
                     <FileText className="w-3 h-3" />
-                    <span>Cargar archivo .geojson</span>
+                    <span>Cargar archivo .kml / .geojson</span>
                     <input
                       type="file"
-                      accept=".geojson,.json"
+                      accept=".geojson,.json,.kml"
                       className="hidden"
                       onChange={(e) => {
                         const file = e.target.files?.[0];
@@ -1649,7 +1633,7 @@ export default function VenteosMonitorModule() {
                 disabled={uploadLoading}
                 className="px-3 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 text-xs font-mono rounded-xl transition-all cursor-pointer"
               >
-                Restablecer a Base Oficial SEN
+                Vaciar catastro
               </button>
 
               <div className="flex items-center gap-2">
@@ -1686,7 +1670,7 @@ export default function VenteosMonitorModule() {
       )}
 
       {/* MODAL 2: Registrar Anomalía No Catastrada como Nuevo Pad */}
-      {showRegisterModal && selectedCruce && (
+      {showRegisterModal && hayDetecciones && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md animate-fade-in">
           <div className="bg-slate-900 border border-slate-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden flex flex-col">
             

@@ -19,71 +19,8 @@ export interface CoordenadaReferenciaCatastro {
 /**
  * Diccionario con las coordenadas reales verificadas en campo (Catastro Oficial)
  */
-export const COORDENADAS_REALES: Record<string, CoordenadaReferenciaCatastro> = {
-  CPF_LOMA_CAMPANA: {
-    id: "CPF_LOMA_CAMPANA",
-    nombre: "PTC Loma Campana (YPF / Chevron) - RP 17 km 12",
-    lat: -38.3580,
-    lon: -68.7130,
-    radio_tolerancia_metros: 400,
-    tipo_instalacion: "Planta de Tratamiento Central (PTC / CPF)",
-    operador: "YPF / Chevron"
-  },
-  CPF_FORTIN_DE_PIEDRA: {
-    id: "CPF_FORTIN_DE_PIEDRA",
-    nombre: "CPF Fortín de Piedra (Tecpetrol)",
-    lat: -38.2570,
-    lon: -68.8920,
-    radio_tolerancia_metros: 400,
-    tipo_instalacion: "Planta Central de Procesamiento Criogénico",
-    operador: "Tecpetrol"
-  },
-  EL_OREJANO: {
-    id: "EL_OREJANO",
-    nombre: "Planta Central de Gas El Orejano (YPF / Dow) - RP 5/7 Arroyo Carranza",
-    lat: -37.9650,
-    lon: -69.1920,
-    radio_tolerancia_metros: 400,
-    tipo_instalacion: "Planta Central de Gas",
-    operador: "YPF / Dow"
-  },
-  CRUZ_DE_LORENA: {
-    id: "CRUZ_DE_LORENA",
-    nombre: "Batería Cruz de Lorena (Shell)",
-    lat: -38.3410,
-    lon: -68.7950,
-    radio_tolerancia_metros: 250,
-    tipo_instalacion: "Batería Colectora",
-    operador: "Shell Argentina"
-  },
-  LA_CALERA_CPF: {
-    id: "LA_CALERA_CPF",
-    nombre: "CPF La Calera (Pluspetrol)",
-    lat: -38.3750,
-    lon: -68.8450,
-    radio_tolerancia_metros: 400,
-    tipo_instalacion: "Central Processing Facility (CPF)",
-    operador: "Pluspetrol"
-  },
-  BS_FL4: {
-    id: "BS_FL4",
-    nombre: "Batería Bandurria Sur (YPF)",
-    lat: -38.3880,
-    lon: -68.7850,
-    radio_tolerancia_metros: 250,
-    tipo_instalacion: "Batería Colectora",
-    operador: "YPF / Equinor"
-  },
-  TRATAYEN_TGS: {
-    id: "TRATAYEN_TGS",
-    nombre: "Planta Compresora Tratayén (TGS)",
-    lat: -38.4120,
-    lon: -68.6320,
-    radio_tolerancia_metros: 400,
-    tipo_instalacion: "Planta Compresora",
-    operador: "TGS"
-  }
-};
+// Vacío: la validación usa el catastro que carga el usuario (ver geoportalSigService).
+export const COORDENADAS_REALES: Record<string, CoordenadaReferenciaCatastro> = {};
 
 /**
  * Mapeo de alias o identificadores de UI a la clave de catastro

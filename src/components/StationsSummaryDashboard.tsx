@@ -22,7 +22,7 @@ export default function StationsSummaryDashboard({
   
   // Real-time sensor simulation state for live feeds
   const [liveTelemetry, setLiveTelemetry] = useState<Record<string, { ch4: number; co2: number; timestamp: string }>>({});
-  const [isSimulating, setIsSimulating] = useState(true);
+  const [isSimulating, setIsSimulating] = useState(false); // sin fluctuación aleatoria: los valores son de ejemplo, no telemetría
 
   // Initialize and run the live telemetry simulation
   useEffect(() => {
@@ -40,7 +40,8 @@ export default function StationsSummaryDashboard({
 
     initTelemetry();
 
-    if (!isSimulating) return;
+    // Valores de ejemplo: no se generan fluctuaciones aleatorias que parezcan telemetría.
+    if (!isSimulating || true) return;
 
     const interval = setInterval(() => {
       setLiveTelemetry((prev) => {
@@ -639,14 +640,14 @@ export default function StationsSummaryDashboard({
           <div>
             <div className="flex gap-2 items-center">
               <h4 className="text-[11px] font-black font-mono tracking-wider text-slate-200">
-                MONITOR DE SENSORES EN TIEMPO REAL (VIRTUAL TWIN)
+                VALORES DE EJEMPLO (NO SON MEDICIONES)
               </h4>
-              <span className="text-[9px] bg-emerald-500/10 text-emerald-400 font-mono px-1.5 py-0.2 rounded font-bold">
-                CAMS CALIBRATOR ACTIVE
+              <span className="text-[9px] bg-amber-500/10 text-amber-400 font-mono px-1.5 py-0.2 rounded font-bold">
+                DEMO
               </span>
             </div>
             <p className="text-[10px] text-slate-450 mt-0.5">
-              Fluctuaciones dinámicas reportadas en órbita actual. Se actualiza cada 3 segundos automáticamente.
+              Estos valores están cargados a mano en el código para demostrar la interfaz. No provienen de satélites ni de sensores.
             </p>
           </div>
         </div>
@@ -654,6 +655,7 @@ export default function StationsSummaryDashboard({
         {/* Live values ribbon */}
         <div className="flex gap-3 max-w-full overflow-x-auto pb-1 md:pb-0 shrink-0">
           <button
+            hidden
             onClick={() => setIsSimulating(!isSimulating)}
             className={`px-3 py-1 rounded text-[9px] font-bold font-mono transition-all cursor-pointer ${
               isSimulating 

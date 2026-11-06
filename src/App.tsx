@@ -117,11 +117,11 @@ export default function App() {
           <div className="flex flex-wrap items-center gap-2 text-[10px] font-mono text-slate-450 border-t md:border-t-0 md:pt-0 pt-2 border-slate-800">
             <span className="flex items-center gap-1 bg-slate-950/60 px-2 py-1 rounded border border-slate-800">
               <Activity className="w-3.5 h-3.5 text-emerald-400" />
-              SATELLITES: SENTINEL-2 & CAMS OPERATIONAL
+              DATOS REALES: NASA FIRMS + CATÁLOGO COPERNICUS
             </span>
             <span className="flex items-center gap-1 bg-slate-950/60 px-2 py-1 rounded border border-slate-800">
               <Database className="w-3.5 h-3.5 text-sky-400" />
-              WIND MODEL: WINDY ARPEGE-13
+              VIENTO: VALOR DE EJEMPLO (SIN MODELO)
             </span>
           </div>
         </div>
@@ -166,7 +166,7 @@ export default function App() {
           <div className="hidden lg:flex items-center gap-3 text-[11px] font-mono text-slate-400 px-3">
             <span className="flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-ping" />
-              10 Antorchas Mapeadas en Vivo
+              Focos NASA FIRMS (últimas 48 h)
             </span>
             <span>·</span>
             <span className="text-slate-500">Sentinel-2 / VIIRS / CAMS</span>
@@ -181,6 +181,11 @@ export default function App() {
       ) : (
         <>
       {/* Main Alert Notification Banner: grows and alerts on real-time soil accumulation and conflict sites */}
+      <div className="max-w-7xl mx-auto px-4 mt-6">
+        <div className="p-3 rounded-xl border border-amber-500/40 bg-amber-500/10 text-amber-200 text-xs leading-relaxed">
+          <b>Aviso de datos:</b> los yacimientos de este selector y sus valores de CH₄, CO₂, NO₂, SO₂, agua y suelo son <b>ejemplos de demostración cargados en el código</b>, no mediciones satelitales. Los únicos datos reales en vivo son los focos térmicos de NASA FIRMS (módulo de venteos, requiere FIRMS_MAP_KEY) y el listado de escenas del catálogo Copernicus.
+        </div>
+      </div>
       <header className="max-w-7xl mx-auto px-4 mt-6" id="critical-hotspots-selection">
         <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl relative transition-all">
           <button

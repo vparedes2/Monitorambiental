@@ -16,12 +16,7 @@
 import { InstalacionSigOficial, normalizarCoordenadasCuenca } from "./geoportalSigService";
 import { calcular_distancia_haversine } from "./cadastralValidation";
 
-export type SensorSatelital = 
-  | "NASA FIRMS (VIIRS NOAA-20)"
-  | "NASA FIRMS (VIIRS Suomi-NPP)"
-  | "NASA FIRMS (VIIRS NOAA-21)"
-  | "Copernicus Sentinel-2C MSI"
-  | "Copernicus Sentinel-2B MSI";
+export type SensorSatelital = string;
 
 export interface DeteccionSatelitalRaw {
   id_deteccion: string;
@@ -32,11 +27,11 @@ export interface DeteccionSatelitalRaw {
   longitud_satelital: number;
   frp_mw: number; // Fire Radiative Power en Megavatios emitido por el sensor
   temperatura_brillo_k: number;
-  temperatura_llama_c: number;
+  temperatura_llama_c: number | null; // FIRMS no la reporta
   fecha_hora_utc: string;
   confianza_deteccion: number;
-  tasa_quema_estimada_m3d: number;
-  eficiencia_combustion_est: number;
+  tasa_quema_estimada_m3d: number | null; // no medible con FIRMS
+  eficiencia_combustion_est: number | null; // no medible con FIRMS
   es_venteo_frio: boolean;
   fuente_catalogo?: string;
 }
@@ -68,10 +63,10 @@ export interface CruceEspacialVenteo {
   exceso_cupo_sen: boolean;
   porcentaje_exceso_cupo: number;
   emisiones_estimadas: {
-    ch4_fugitivo_ton_ano: number;
-    co2_ton_ano: number;
-    so2_kg_dia: number;
-    nox_kg_dia: number;
+    ch4_fugitivo_ton_ano: number | null;
+    co2_ton_ano: number | null;
+    so2_kg_dia: number | null;
+    nox_kg_dia: number | null;
   };
   enlaces_inspeccion_hd: {
     google_maps_url: string;
@@ -130,7 +125,7 @@ export function resolverCruceEspacialIndividual(
       inst.longitud_oficial
     );
 
-    const dist = calcular_distancia_haversine(satLat, satLon, instLat, instLon);
+    const dist = Math.round(calcular_distancia_haversine(satLat, satLon, instLat, instLon));
     if (dist < distanciaMinimaMetros) {
       distanciaMinimaMetros = dist;
       mejorMatch = inst;
@@ -138,6 +133,7 @@ export function resolverCruceEspacialIndividual(
   }
 
   const tolerancia = mejorMatch?.radio_tolerancia_metros || 400;
+  if (!Number.isFinite(distanciaMinimaMetros)) distanciaMinimaMetros = 0;
 
   // PREVENCIÓN ESTRICTA DE SALTOS:
   // Si la distancia supera la tolerancia, NO asociar a la planta.
@@ -175,9 +171,14 @@ export function resolverCruceEspacialIndividual(
   } else {
     // Caso de anomalía no catastrada (permanece en su coordenada nativa satelital)
     tipoCorrelacion = "ANOMALIA_NO_CATASTRADA";
+    if (!mejorMatch) {
+      etiquetaClasificacion = `Foco térmico [${latStr}, ${lonStr}] - ${deteccion.sensor} - Sin catastro cargado para cruzar`;
+      calificacionPosicionamiento = `No hay instalaciones cargadas en el catastro. Cargue su capa KML/GeoJSON para clasificar este foco.`;
+    } else {
     const distKm = (distanciaMinimaMetros / 1000).toFixed(1);
-    etiquetaClasificacion = `Anomalía Térmica No Catastrada - Coordenadas [${latStr}, ${lonStr}] - Detección ${deteccion.sensor.split(" (")[0]} - Sin pad registrado en radio de ${distKm} km`;
-    calificacionPosicionamiento = `Alerta de campo independiente: Sin infraestructura catastrada en un radio de ${distKm} km (más cercana: ${mejorMatch?.denominacion_corta || "Ninguna"} a ${distKm} km). Requiere inspección óptica satelital HD o alta catastral.`;
+    etiquetaClasificacion = `Anomalía Térmica No Catastrada - Coordenadas [${latStr}, ${lonStr}] - Detección ${deteccion.sensor.split(" (")[0]} - Sin instalación cargada en radio de ${distKm} km`;
+    calificacionPosicionamiento = `Sin instalación catastrada dentro de la tolerancia (más cercana: ${mejorMatch.denominacion_corta} a ${distKm} km). Verificar con imagen satelital o dar de alta la instalación.`;
+    }
 
     if (distanciaMinimaMetros <= 3500 && mejorMatch) {
       alertaConfusion = true;
@@ -185,26 +186,31 @@ export function resolverCruceEspacialIndividual(
   }
 
   // Evaluación regulatoria (Resolución SEN 236/93 y Ley Neuquina 1875)
-  const cupo = mejorMatch?.cupo_sen_m3d || 15000;
+  const cupo = mejorMatch?.cupo_sen_m3d || 0;
   const tasa = deteccion.tasa_quema_estimada_m3d;
-  const excesoCupo = esMatchCatastral && tasa > cupo;
-  const pctExceso = excesoCupo ? Math.round(((tasa - cupo) / cupo) * 100) : 0;
+  const efic = deteccion.eficiencia_combustion_est;
+  const excesoCupo = esMatchCatastral && tasa !== null && cupo > 0 && tasa > cupo;
+  const pctExceso = excesoCupo && tasa !== null ? Math.round(((tasa - cupo) / cupo) * 100) : 0;
 
   let estado: "Crítico" | "En Observación" | "Operativo" = "Operativo";
-  if (deteccion.es_venteo_frio || pctExceso > 30 || deteccion.eficiencia_combustion_est < 90 || (!esMatchCatastral && deteccion.frp_mw > 10)) {
+  if (deteccion.es_venteo_frio || pctExceso > 30 || (efic !== null && efic < 90) || (!esMatchCatastral && deteccion.frp_mw > 10)) {
     estado = "Crítico";
-  } else if (excesoCupo || deteccion.eficiencia_combustion_est < 96 || !esMatchCatastral) {
+  } else if (excesoCupo || (efic !== null && efic < 96) || !esMatchCatastral) {
     estado = "En Observación";
   }
 
-  // Estimación AP-42
-  const unburnedFrac = Math.max(0.005, (100 - deteccion.eficiencia_combustion_est) / 100);
-  const ch4TonYear = deteccion.es_venteo_frio
-    ? Math.round((tasa * 365 * 0.72 * 0.88) / 1000)
-    : Math.round((tasa * 365 * 0.72 * 0.88 * unburnedFrac) / 1000);
-  const co2TonYear = deteccion.es_venteo_frio
-    ? 0
-    : Math.round((tasa * 365 * 0.72 * (1 - unburnedFrac) * 2.75) / 1000);
+  // Estimación AP-42: solo si hay una tasa de quema conocida (FIRMS no la provee)
+  let ch4TonYear: number | null = null;
+  let co2TonYear: number | null = null;
+  if (tasa !== null) {
+    const unburnedFrac = Math.max(0.005, (100 - (efic ?? 98)) / 100);
+    ch4TonYear = deteccion.es_venteo_frio
+      ? Math.round((tasa * 365 * 0.72 * 0.88) / 1000)
+      : Math.round((tasa * 365 * 0.72 * 0.88 * unburnedFrac) / 1000);
+    co2TonYear = deteccion.es_venteo_frio
+      ? 0
+      : Math.round((tasa * 365 * 0.72 * (1 - unburnedFrac) * 2.75) / 1000);
+  }
 
   return {
     id: `cruce-${deteccion.id_deteccion}`,
@@ -228,8 +234,8 @@ export function resolverCruceEspacialIndividual(
     emisiones_estimadas: {
       ch4_fugitivo_ton_ano: ch4TonYear,
       co2_ton_ano: co2TonYear,
-      so2_kg_dia: Math.round(tasa * 0.0012),
-      nox_kg_dia: Math.round(tasa * 0.0028)
+      so2_kg_dia: tasa !== null ? Math.round(tasa * 0.0012) : null,
+      nox_kg_dia: tasa !== null ? Math.round(tasa * 0.0028) : null
     },
     enlaces_inspeccion_hd: {
       google_maps_url: googleMapsUrl,

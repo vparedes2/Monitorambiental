@@ -99,204 +99,56 @@ export function asignarToleranciaPorTipologia(tipo: string, toleranciaExplicita?
 }
 
 /**
- * Capa Oficial Base Inicial del Geoportal SIG (IDENEU / Secretaría de Energía)
- * COORDENADAS MAESTRAS VERIFICADAS WGS84:
- * GeoJSON requiere geometry.coordinates = [longitud, latitud]
+ * Catastro base: VACÍO a propósito.
+ * Las coordenadas que existían acá no estaban relevadas (eran aproximaciones
+ * generadas por IA y ubicaban mal las plantas). Cada usuario carga su propio
+ * catastro verificado (KML exportado de Google Earth o GeoJSON).
  */
 export const INITIAL_OFFICIAL_GEOJSON_STORE: GeoJsonFeatureCollection = {
   type: "FeatureCollection",
-  name: "Catastro_Hidrocarburifero_Oficial_Cuenca_Neuquina_SEN_2026",
+  name: "Catastro_Vaca_Muerta_Usuario",
   crs: {
     type: "name",
     properties: { name: "urn:ogc:def:crs:OGC:1.3:CRS84" }
   },
-  features: [
-    // 1. PTC Loma Campana (YPF / Chevron) - RP 17 km 12
-    {
-      type: "Feature",
-      id: "PTC_LOMA_CAMPANA",
-      geometry: {
-        type: "Point",
-        coordinates: [-68.7130, -38.3580] // [lon, lat] WGS84
-      },
-      properties: {
-        id: "PTC_LOMA_CAMPANA",
-        nombre: "Planta de Tratamiento Central PTC Loma Campana",
-        denominacion_corta: "PTC Loma Campana",
-        tipo: "Planta Troncal / PTC / Gas",
-        operador: "YPF / Chevron",
-        bloque_area: "Loma Campana",
-        diametro_pad_m: 400,
-        radio_tolerancia_metros: 400,
-        cupo_sen_m3d: 15000,
-        antorcha_altura_m: 42,
-        antorcha_tipo: "Antorcha Elevada de Alta Presión (HP)",
-        descripcion_catastral: "Complejo central de recepción y tratamiento de crudo de Loma Campana sobre RP 17 km 12. Batería de 12 tanques de almacenamiento y antorcha troncal."
-      }
-    },
-    // 2. CPF Fortín de Piedra (Tecpetrol)
-    {
-      type: "Feature",
-      id: "CPF_FORTIN_DE_PIEDRA",
-      geometry: {
-        type: "Point",
-        coordinates: [-68.8920, -38.2570] // [lon, lat] WGS84
-      },
-      properties: {
-        id: "CPF_FORTIN_DE_PIEDRA",
-        nombre: "Planta Central de Procesamiento CPF Fortín de Piedra",
-        denominacion_corta: "CPF Fortín de Piedra",
-        tipo: "Planta Troncal / PTC / Gas",
-        operador: "Tecpetrol",
-        bloque_area: "Fortín de Piedra",
-        diametro_pad_m: 450,
-        radio_tolerancia_metros: 400,
-        cupo_sen_m3d: 40000,
-        antorcha_altura_m: 45,
-        antorcha_tipo: "Antorcha Asistida por Vapor",
-        descripcion_catastral: "Mayor complejo criogénico de acondicionamiento de shale gas de Sudamérica. Trenes de deshidratación y antorchas de alta eficiencia."
-      }
-    },
-    // 3. Planta Gas El Orejano (YPF / Dow) - RP 5/7 Arroyo Carranza
-    {
-      type: "Feature",
-      id: "CPF_EL_OREJANO",
-      geometry: {
-        type: "Point",
-        coordinates: [-69.1920, -37.9650] // [lon, lat] WGS84
-      },
-      properties: {
-        id: "CPF_EL_OREJANO",
-        nombre: "Planta Central de Gas El Orejano (RP 5/7 Arroyo Carranza)",
-        denominacion_corta: "Planta El Orejano",
-        tipo: "Planta Troncal / PTC / Gas",
-        operador: "YPF / Dow",
-        bloque_area: "El Orejano",
-        diametro_pad_m: 380,
-        radio_tolerancia_metros: 400,
-        cupo_sen_m3d: 12000,
-        antorcha_altura_m: 18,
-        antorcha_tipo: "Antorcha Cerrada en Cámara (Enclosed Ground Flare)",
-        descripcion_catastral: "Concesión YPF-Dow camino a Rincón de los Sauces (RP 5/RP 7), cabecera este del Arroyo Carranza. Desarrollo pionero de shale gas."
-      }
-    },
-    // 4. Batería Cruz de Lorena (Shell)
-    {
-      type: "Feature",
-      id: "BATERIA_CRUZ_DE_LORENA",
-      geometry: {
-        type: "Point",
-        coordinates: [-68.7950, -38.3410] // [lon, lat] WGS84
-      },
-      properties: {
-        id: "BATERIA_CRUZ_DE_LORENA",
-        nombre: "Batería de Producción Cruz de Lorena (Shell)",
-        denominacion_corta: "Batería Cruz de Lorena",
-        tipo: "Batería Colectora",
-        operador: "Shell Argentina",
-        bloque_area: "Cruz de Lorena",
-        diametro_pad_m: 260,
-        radio_tolerancia_metros: 250,
-        cupo_sen_m3d: 16000,
-        antorcha_altura_m: 30,
-        antorcha_tipo: "Antorcha Sonic Multiboca",
-        descripcion_catastral: "Batería colectora y separador de producción temprana de Shell en Cruz de Lorena."
-      }
-    },
-    // 5. CPF La Calera (Pluspetrol)
-    {
-      type: "Feature",
-      id: "CPF_LA_CALERA",
-      geometry: {
-        type: "Point",
-        coordinates: [-68.8450, -38.3750] // [lon, lat] WGS84
-      },
-      properties: {
-        id: "CPF_LA_CALERA",
-        nombre: "Planta de Tratamiento Central CPF La Calera",
-        denominacion_corta: "CPF La Calera",
-        tipo: "Planta Troncal / PTC / Gas",
-        operador: "Pluspetrol / YPF",
-        bloque_area: "La Calera",
-        diametro_pad_m: 380,
-        radio_tolerancia_metros: 400,
-        cupo_sen_m3d: 18000,
-        antorcha_altura_m: 40,
-        antorcha_tipo: "Antorcha Sonic Multiboca",
-        descripcion_catastral: "Complejo de procesamiento de gas rico y condensados de Pluspetrol en la ventana húmeda de Vaca Muerta."
-      }
-    },
-    // 6. Batería Bandurria Sur (YPF)
-    {
-      type: "Feature",
-      id: "BATERIA_BANDURRIA_SUR",
-      geometry: {
-        type: "Point",
-        coordinates: [-68.7850, -38.3880] // [lon, lat] WGS84
-      },
-      properties: {
-        id: "BATERIA_BANDURRIA_SUR",
-        nombre: "Batería Colectora Bandurria Sur BS-FL4",
-        denominacion_corta: "Batería Bandurria Sur",
-        tipo: "Batería Colectora",
-        operador: "YPF / Equinor",
-        bloque_area: "Bandurria Sur",
-        diametro_pad_m: 250,
-        radio_tolerancia_metros: 250,
-        cupo_sen_m3d: 12000,
-        antorcha_altura_m: 28,
-        antorcha_tipo: "Antorcha Sonic Multiboca",
-        descripcion_catastral: "Instalación colectora de crudo no convencional en Bandurria Sur."
-      }
-    },
-    // 7. Planta Compresora Tratayén (TGS) - Hub Gasoducto
-    {
-      type: "Feature",
-      id: "TGS_TRATAYEN",
-      geometry: {
-        type: "Point",
-        coordinates: [-68.6320, -38.4120] // [lon, lat] WGS84
-      },
-      properties: {
-        id: "TGS_TRATAYEN",
-        nombre: "Planta Compresora Tratayén y Nodo Troncal Gasoducto",
-        denominacion_corta: "Planta Compresora Tratayén",
-        tipo: "Planta Compresora",
-        operador: "Transportadora de Gas del Sur (TGS)",
-        bloque_area: "Hub Tratayén",
-        diametro_pad_m: 320,
-        radio_tolerancia_metros: 400,
-        cupo_sen_m3d: 10000,
-        antorcha_altura_m: 35,
-        antorcha_tipo: "Antorcha de Alivio y Ventilación Fría",
-        descripcion_catastral: "Cabecera de inyección del Gasoducto Presidente Néstor Kirchner. Equipos de compresión y antorchas de venteo de emergencia."
-      }
-    },
-    // 8. CPF Bajada del Palo Oeste (Vista Energy)
-    {
-      type: "Feature",
-      id: "CPF_BAJADA_DEL_PALO_OESTE",
-      geometry: {
-        type: "Point",
-        coordinates: [-68.6850, -38.2850] // [lon, lat] WGS84
-      },
-      properties: {
-        id: "CPF_BAJADA_DEL_PALO_OESTE",
-        nombre: "Planta de Tratamiento CPF Bajada del Palo Oeste",
-        denominacion_corta: "CPF Bajada del Palo Oeste",
-        tipo: "Planta Troncal / PTC / Gas",
-        operador: "Vista Energy",
-        bloque_area: "Bajada del Palo Oeste",
-        diametro_pad_m: 340,
-        radio_tolerancia_metros: 400,
-        cupo_sen_m3d: 18000,
-        antorcha_altura_m: 36,
-        antorcha_tipo: "Antorcha de Alta Eficiencia Asistida",
-        descripcion_catastral: "Complejo de procesamiento de crudo liviano no convencional de Vista Energy."
-      }
-    }
-  ]
+  features: []
 };
+
+/**
+ * Convierte un KML (Google Earth: "Guardar lugar como... > KML") en features GeoJSON.
+ * Toma los Placemark con <Point>. Para polígonos o líneas usa el primer vértice
+ * como referencia. El tipo de instalación se deduce del nombre (PTC, CPF, batería, pad...).
+ */
+export function kmlAFeatures(kml: string): any[] {
+  const features: any[] = [];
+  const placemarks = kml.match(/<Placemark[\s\S]*?<\/Placemark>/gi) || [];
+  placemarks.forEach((pm, idx) => {
+    const nameMatch = pm.match(/<name>\s*(?:<!\[CDATA\[)?([\s\S]*?)(?:\]\]>)?\s*<\/name>/i);
+    const coordMatch = pm.match(/<coordinates>\s*([\s\S]*?)\s*<\/coordinates>/i);
+    if (!coordMatch) return;
+    const first = coordMatch[1].trim().split(/\s+/)[0];
+    const [lonStr, latStr] = first.split(",");
+    const lon = Number(lonStr);
+    const lat = Number(latStr);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+    const nombre = (nameMatch?.[1] || `Instalación KML ${idx + 1}`).trim();
+    const n = nombre.toLowerCase();
+    let tipo = "Pad de Producción / Pozo";
+    if (/\b(ptc|cpf|planta|central|tratamiento)\b/.test(n)) tipo = "Planta de Tratamiento Central (PTC/CPF)";
+    else if (/compresora/.test(n)) tipo = "Planta Compresora";
+    else if (/bater[ií]a|colectora/.test(n)) tipo = "Batería / Colectora";
+    else if (/cargadero/.test(n)) tipo = "Cargadero";
+    else if (/\bepf\b|early/.test(n)) tipo = "EPF / Early Production Facility";
+    const slug = nombre.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^A-Za-z0-9]+/g, "_").toUpperCase().slice(0, 40);
+    features.push({
+      type: "Feature",
+      id: `KML_${slug}_${idx}`,
+      geometry: { type: "Point", coordinates: [lon, lat] },
+      properties: { id: `KML_${slug}_${idx}`, nombre, tipo }
+    });
+  });
+  return features;
+}
 
 // Almacén dinámico en memoria
 let activeGeoJsonStore: GeoJsonFeatureCollection = JSON.parse(JSON.stringify(INITIAL_OFFICIAL_GEOJSON_STORE));
@@ -323,15 +175,15 @@ export function normalizarFeatureAInstalacion(feat: GeoJsonFeature): Instalacion
     codigo_sig: id,
     nombre_oficial: nombre,
     denominacion_corta: props.denominacion_corta || nombre.replace(/Planta de Tratamiento Central |Planta Central de Gas |Planta Compresora |Batería Colectora |Early Production Facility /g, ""),
-    operador_oficial: props.operador || "Operador Cuenca Neuquina",
+    operador_oficial: props.operador || "Sin dato",
     bloque_concesion: props.bloque_area || "Cuenca Neuquina",
     tipo_instalacion: tipo,
     latitud_oficial: lat,
     longitud_oficial: lon,
     radio_tolerancia_metros: tolerancia,
     diametro_pad_m: props.diametro_pad_m || Math.round(tolerancia * 0.8),
-    capacidad_diseno_m3d: props.capacidad_diseno_m3d || 25000,
-    cupo_sen_m3d: props.cupo_sen_m3d || 15000,
+    capacidad_diseno_m3d: props.capacidad_diseno_m3d || 0,
+    cupo_sen_m3d: props.cupo_sen_m3d || 0,
     antorcha_altura_m: props.antorcha_altura_m || 30,
     antorcha_tipo: props.antorcha_tipo || "Antorcha Estándar Registrada",
     descripcion_catastral: props.descripcion_catastral || `Instalación catastrada en Geoportal SIG (${tipo}).`,
@@ -369,7 +221,12 @@ export function ingestarCapaGeoJson(
   let rawFeatures: any[] = [];
 
   let parsedPayload = payload;
-  if (typeof payload === "string") {
+  if (typeof payload === "string" && payload.trim().startsWith("<")) {
+    parsedPayload = kmlAFeatures(payload);
+    if (parsedPayload.length === 0) {
+      throw new Error("El KML no contiene lugares (Placemark) con coordenadas.");
+    }
+  } else if (typeof payload === "string") {
     try {
       parsedPayload = JSON.parse(payload);
     } catch (e: any) {
@@ -441,11 +298,11 @@ export function ingestarCapaGeoJson(
         id,
         nombre,
         tipo,
-        operador: props.operador || props.operador_oficial || "Operador Cuenca Neuquina",
+        operador: props.operador || props.operador_oficial || "Sin dato",
         bloque_area: props.bloque_area || props.bloque_concesion || "Cuenca Neuquina",
         diametro_pad_m: props.diametro_pad_m || Math.round(tolerancia * 0.8),
         radio_tolerancia_metros: tolerancia,
-        cupo_sen_m3d: props.cupo_sen_m3d || 15000,
+        cupo_sen_m3d: props.cupo_sen_m3d || 0,
         antorcha_altura_m: props.antorcha_altura_m || 25,
         antorcha_tipo: props.antorcha_tipo || "Antorcha de Campo Registrada",
         descripcion_catastral: props.descripcion_catastral || `Instalación oficial incorporada dinámicamente al almacén GeoJSON.`,
@@ -530,11 +387,11 @@ export function agregarInstalacionIndividual(params: {
       id,
       nombre: params.nombre,
       tipo,
-      operador: params.operador || "Operador Cuenca Neuquina",
+      operador: params.operador || "Sin dato",
       bloque_area: params.bloque_area || "Cuenca Neuquina",
       diametro_pad_m: Math.round(tolerancia * 0.8),
       radio_tolerancia_metros: tolerancia,
-      cupo_sen_m3d: params.cupo_sen_m3d || 10000,
+      cupo_sen_m3d: params.cupo_sen_m3d || 0,
       antorcha_altura_m: 20,
       antorcha_tipo: "Antorcha de Pad Registrada en Campo",
       descripcion_catastral: "Instalación catastrada a partir de anomalía satelital verificada.",

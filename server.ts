@@ -8,15 +8,121 @@ import {
   getGeoJsonStore, 
   ingestarCapaGeoJson, 
   resetToOfficialDefaults, 
-  agregarInstalacionIndividual 
+  agregarInstalacionIndividual,
+  buscarInstalacionSig
 } from "./src/services/geoportalSigService";
+import { calcular_distancia_haversine } from "./src/services/cadastralValidation";
 import { 
   ejecutarCruceEspacialSatelital, 
   ingestarDeteccionSatelital, 
-  resetDeteccionesSatelitales 
+  resetDeteccionesSatelitales,
+  parseFirmsCsv,
+  setDeteccionesFirms,
+  FIRMS_SOURCES,
+  BBOX_CUENCA
 } from "./src/services/satelliteDetectionsService";
+import fs from "fs";
 
 dotenv.config();
+
+const limpiarEnv = (v?: string) => (v || "").replace(/^["']|["']$/g, "").trim();
+
+// ---------------------------------------------------------------------------
+// Persistencia del catastro cargado por el usuario (sobrevive a reinicios
+// mientras el disco del contenedor exista; el navegador además guarda copia).
+// ---------------------------------------------------------------------------
+const CATASTRO_FILE = path.join(process.cwd(), "data", "catastro.geojson");
+const guardarCatastro = () => {
+  try {
+    fs.mkdirSync(path.dirname(CATASTRO_FILE), { recursive: true });
+    fs.writeFileSync(CATASTRO_FILE, JSON.stringify(getGeoJsonStore()));
+  } catch (e: any) {
+    console.log("[Catastro] No se pudo guardar en disco:", e.message);
+  }
+};
+try {
+  if (fs.existsSync(CATASTRO_FILE)) {
+    const guardado = JSON.parse(fs.readFileSync(CATASTRO_FILE, "utf8"));
+    if (guardado?.features?.length) {
+      ingestarCapaGeoJson(guardado, "replace");
+      console.log(`[Catastro] ${guardado.features.length} instalaciones restauradas desde disco.`);
+    }
+  }
+} catch (e: any) {
+  console.log("[Catastro] No se pudo leer el archivo guardado:", e.message);
+}
+
+// ---------------------------------------------------------------------------
+// NASA FIRMS (focos térmicos VIIRS reales). Requiere FIRMS_MAP_KEY gratuita:
+// https://firms.modaps.eosdis.nasa.gov/api/map_key/
+// ---------------------------------------------------------------------------
+type EstadoFirms = {
+  estado: "ok" | "sin_clave" | "error";
+  mensaje: string;
+  consultado_utc: string | null;
+  dias: number;
+  total: number;
+  por_fuente: Record<string, number | string>;
+};
+let estadoFirms: EstadoFirms = {
+  estado: "sin_clave",
+  mensaje: "Falta FIRMS_MAP_KEY en los secretos de la app. Sin ella no hay focos térmicos reales.",
+  consultado_utc: null,
+  dias: 2,
+  total: 0,
+  por_fuente: {}
+};
+let ultimaConsultaFirms = 0;
+const FIRMS_CACHE_MS = 10 * 60 * 1000;
+
+const actualizarFirms = async (forzar = false): Promise<EstadoFirms> => {
+  const mapKey = limpiarEnv(process.env.FIRMS_MAP_KEY);
+  if (!mapKey) {
+    setDeteccionesFirms([]);
+    estadoFirms = { ...estadoFirms, estado: "sin_clave", total: 0, por_fuente: {} };
+    return estadoFirms;
+  }
+  if (!forzar && Date.now() - ultimaConsultaFirms < FIRMS_CACHE_MS && estadoFirms.estado === "ok") {
+    return estadoFirms;
+  }
+
+  const dias = 2;
+  const area = `${BBOX_CUENCA.west},${BBOX_CUENCA.south},${BBOX_CUENCA.east},${BBOX_CUENCA.north}`;
+  const todas: any[] = [];
+  const porFuente: Record<string, number | string> = {};
+  const errores: string[] = [];
+
+  await Promise.all(FIRMS_SOURCES.map(async ({ source, sensor }) => {
+    try {
+      const url = `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${encodeURIComponent(mapKey)}/${source}/${area}/${dias}`;
+      const r = await fetch(url);
+      const txt = await r.text();
+      if (!r.ok) throw new Error(`HTTP ${r.status}: ${txt.slice(0, 120)}`);
+      const lista = parseFirmsCsv(txt, sensor);
+      porFuente[source] = lista.length;
+      todas.push(...lista);
+    } catch (e: any) {
+      porFuente[source] = `error: ${e.message}`;
+      errores.push(`${source}: ${e.message}`);
+    }
+  }));
+
+  setDeteccionesFirms(todas);
+  ultimaConsultaFirms = Date.now();
+  const huboExito = Object.values(porFuente).some((v) => typeof v === "number");
+  estadoFirms = {
+    estado: huboExito ? "ok" : "error",
+    mensaje: huboExito
+      ? `${todas.length} focos térmicos reales en la cuenca (últimas ${dias * 24} h).${errores.length ? " Algunas fuentes fallaron." : ""}`
+      : `No se pudo consultar NASA FIRMS: ${errores.join(" | ")}`,
+    consultado_utc: new Date().toISOString(),
+    dias,
+    total: todas.length,
+    por_fuente: porFuente
+  };
+  console.log(`[FIRMS] ${estadoFirms.mensaje}`);
+  return estadoFirms;
+};
 
 const PORT = 3000;
 const app = express();
@@ -250,131 +356,109 @@ app.get("/api/satellite-connection", async (req, res) => {
       console.log("[HSE Monitor Engine] Acceso directo vía Catálogo Público CDSE de Copernicus.");
     }
 
-    // Query real Copernicus CDSE OData API for:
-    // 1. Sentinel-2 MSI L2A multispectral tiles for Neuquén/Añelo basin (Tile T19H)
-    // 2. Sentinel-5P TROPOMI Atmospheric Methane (CH4)
+    // Consulta REAL al catálogo Copernicus CDSE, filtrada por el área pedida.
+    // Nota: devuelve qué escenas existen (fecha, nubosidad, vista previa).
+    // No calcula índices sobre los píxeles.
+    const poligono = `POLYGON((${minLon} ${minLat},${maxLon} ${minLat},${maxLon} ${maxLat},${minLon} ${maxLat},${minLon} ${minLat}))`;
+    const intersects = `OData.CSC.Intersects(area=geography'SRID=4326;${poligono}')`;
+    const desde = new Date(Date.now() - 20 * 24 * 3600 * 1000).toISOString();
+    const odata = (filtro: string, top: number) =>
+      "https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=" +
+      encodeURIComponent(`${filtro} and ${intersects} and ContentDate/Start gt ${desde}`) +
+      `&$orderby=${encodeURIComponent("ContentDate/Start desc")}&$top=${top}&$expand=Attributes&$expand=Assets`;
+
     const [s2Response, s5pResponse] = await Promise.all([
-      fetch("https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=contains(Name,%27T19H%27)%20and%20contains(Name,%27MSIL2A%27)&$orderby=ContentDate/Start%20desc&$top=3", {
-        headers
-      }).catch(() => null),
-      fetch("https://catalogue.dataspace.copernicus.eu/odata/v1/Products?$filter=contains(Name,%27S5P%27)%20and%20contains(Name,%27CH4%27)&$orderby=ContentDate/Start%20desc&$top=2", {
-        headers
-      }).catch(() => null)
+      fetch(odata("Collection/Name eq 'SENTINEL-2' and contains(Name,'MSIL2A')", 4), { headers }).catch(() => null),
+      fetch(odata("Collection/Name eq 'SENTINEL-5P' and contains(Name,'L2__CH4___')", 2), { headers }).catch(() => null)
     ]);
 
-    const scenes: any[] = [];
+    const attr = (item: any, name: string) =>
+      (item.Attributes || []).find((a: any) => a.Name === name)?.Value ?? null;
+    const quicklook = (item: any) =>
+      (item.Assets || []).find((a: any) => /quicklook/i.test(a.Type || ""))?.DownloadLink || null;
 
-    // Parse Sentinel-2 scenes
+    const scenes: any[] = [];
+    let catalogoError: string | null = null;
+
     if (s2Response && s2Response.ok) {
       const s2Data: any = await s2Response.json();
       for (const item of s2Data.value || []) {
         const name = item.Name || "";
-        const isS2C = name.startsWith("S2C");
-        const isS2B = name.startsWith("S2B");
-        const platformName = isS2C ? "Sentinel-2C (ESA)" : isS2B ? "Sentinel-2B (ESA)" : "Sentinel-2A (ESA)";
-        const startDate = item.ContentDate?.Start || item.OriginDate || new Date().toISOString();
-
+        const platformName = name.startsWith("S2C") ? "Sentinel-2C (ESA)" : name.startsWith("S2B") ? "Sentinel-2B (ESA)" : "Sentinel-2A (ESA)";
+        const cc = attr(item, "cloudCover");
         scenes.push({
           id: name.replace(".SAFE", ""),
           platform: platformName,
-          datetime: startDate,
-          cloudCover: 1.2,
-          bbox: item.GeoFootprint?.coordinates?.[0] ? [minLon, minLat, maxLon, maxLat] : null,
-          title: `Multiespectral Nivel 2A Vaca Muerta (${name.slice(38, 44) || "Sector Cuenca"})`,
-          dataSize: `${((item.ContentLength || 1050000000) / (1024 * 1024)).toFixed(0)} MB - MSI L2A`,
+          datetime: item.ContentDate?.Start || null,
+          cloudCover: typeof cc === "number" ? cc : null,
+          bbox: [minLon, minLat, maxLon, maxLat],
+          title: `Sentinel-2 L2A · tile ${(name.match(/_T(\d{2}[A-Z]{3})_/) || [])[1] || "?"}`,
+          dataSize: item.ContentLength ? `${(item.ContentLength / (1024 * 1024)).toFixed(0)} MB - MSI L2A` : "MSI L2A",
           sensor: "MultiSpectral Instrument (MSI)",
-          thumbnailUrl: "https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?q=80&w=400&auto=format&fit=crop",
+          thumbnailUrl: quicklook(item),
           isLiveOData: true
         });
       }
+    } else {
+      catalogoError = `Sentinel-2: ${s2Response ? `HTTP ${s2Response.status}` : "sin conexión"}`;
     }
 
-    // Parse Sentinel-5P atmospheric methane scenes
     if (s5pResponse && s5pResponse.ok) {
       const s5pData: any = await s5pResponse.json();
       for (const item of s5pData.value || []) {
         const name = item.Name || "";
-        const startDate = item.ContentDate?.Start || item.OriginDate || new Date().toISOString();
-
         scenes.push({
           id: name.replace(".nc", ""),
           platform: "Sentinel-5 Precursor (Copernicus)",
-          datetime: startDate,
-          cloudCover: 0.0,
-          title: "Monitoreo Atmosférico de Metano CH4 (Órbita TROPOMI)",
-          dataSize: `${((item.ContentLength || 320000000) / (1024 * 1024)).toFixed(0)} MB - L2 CH4`,
-          sensor: "TROPOMI Atmospheric Tracker",
-          thumbnailUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400&auto=format&fit=crop",
+          datetime: item.ContentDate?.Start || null,
+          cloudCover: null,
+          title: "TROPOMI CH4 (metano) · píxel ~5,5 × 7 km, sirve solo como tendencia regional",
+          dataSize: item.ContentLength ? `${(item.ContentLength / (1024 * 1024)).toFixed(0)} MB - L2 CH4` : "L2 CH4",
+          sensor: "TROPOMI",
+          thumbnailUrl: null,
           isLiveOData: true
         });
       }
+    } else {
+      catalogoError = [catalogoError, `Sentinel-5P: ${s5pResponse ? `HTTP ${s5pResponse.status}` : "sin conexión"}`].filter(Boolean).join(" | ");
     }
 
-    // Fallback if network was completely unavailable
-    if (scenes.length === 0) {
-      scenes.push(
-        {
-          id: "S2C_MSIL2A_20261105T142751_N0513_R053_T19HDT",
-          platform: "Sentinel-2C (ESA)",
-          datetime: new Date().toISOString(),
-          cloudCover: 1.4,
-          title: "Mapeo Multiespectral HD Vaca Muerta Sector Centro (Añelo)",
-          dataSize: "1038 MB - MSI L2A",
-          sensor: "MultiSpectral Instrument (MSI)",
-          thumbnailUrl: "https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?q=80&w=400&auto=format&fit=crop"
-        },
-        {
-          id: "S5P_NRTI_L2__CH4____20261105T225232_46968_03",
-          platform: "Sentinel-5 Precursor (Copernicus)",
-          datetime: new Date().toISOString(),
-          cloudCover: 0.0,
-          title: "Diagnóstico de Metano CH4 (Vaca Muerta Orbit Tracker)",
-          dataSize: "312 MB - Atmospheric TROPOMI",
-          sensor: "TROPOMI Atmospheric Tracker",
-          thumbnailUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400&auto=format&fit=crop"
-        }
-      );
-    }
-
-    // Fetch live ambient air reports in Argentina via OpenAQ network
+    // Calidad de aire: OpenAQ v3 (la v2 fue dada de baja). Requiere OPENAQ_API_KEY.
+    // Sin clave no se muestran estaciones (antes se inventaban valores).
     let aqStations: any[] = [];
-    try {
-      const aqResponse = await fetch("https://api.openaq.org/v2/latest?country=AR&limit=10");
-      if (aqResponse.ok) {
-        const aqData: any = await aqResponse.json();
-        aqStations = (aqData.results || []).map((item: any) => ({
-          location: item.location,
-          city: item.city || "Estación Argentina",
-          coordinates: item.coordinates,
-          measurements: item.measurements || []
-        }));
-      }
-    } catch (_aqErr) {
-      console.log("[HSE Monitor Engine] Continuando con datos Sentinel.");
-    }
-
-    if (aqStations.length === 0) {
-      aqStations = [
-        {
-          location: "Neuquén CAMS Station 1",
-          city: "Neuquén",
-          coordinates: { latitude: -38.9516, longitude: -68.0591 },
-          measurements: [
-            { parameter: "no2", value: 14.5, unit: "µg/m³" },
-            { parameter: "so2", value: 3.2, unit: "µg/m³" },
-            { parameter: "pm10", value: 22, unit: "µg/m³" }
-          ]
-        },
-        {
-          location: "Añelo Industrial Park West",
-          city: "Añelo",
-          coordinates: { latitude: -38.3522, longitude: -68.7891 },
-          measurements: [
-            { parameter: "co2", value: 412.5, unit: "ppm" },
-            { parameter: "ch4", value: 1.84, unit: "ppm" }
-          ]
+    let aqEstado = "Sin OPENAQ_API_KEY: no se consultan estaciones de calidad de aire.";
+    const openaqKey = limpiarEnv(process.env.OPENAQ_API_KEY);
+    if (openaqKey) {
+      try {
+        const aqHeaders = { "X-API-Key": openaqKey };
+        const locRes = await fetch(`https://api.openaq.org/v3/locations?bbox=-70.5,-39.5,-67.5,-37&limit=10`, { headers: aqHeaders });
+        if (locRes.ok) {
+          const locData: any = await locRes.json();
+          const locs = (locData.results || []).slice(0, 5);
+          for (const loc of locs) {
+            const latRes = await fetch(`https://api.openaq.org/v3/locations/${loc.id}/latest`, { headers: aqHeaders });
+            const latData: any = latRes.ok ? await latRes.json() : { results: [] };
+            const sensores: Record<number, any> = {};
+            (loc.sensors || []).forEach((sn: any) => { sensores[sn.id] = sn.parameter; });
+            aqStations.push({
+              location: loc.name,
+              city: loc.locality || "Neuquén",
+              coordinates: loc.coordinates,
+              measurements: (latData.results || []).map((m: any) => ({
+                parameter: sensores[m.sensorsId]?.name || "?",
+                value: m.value,
+                unit: sensores[m.sensorsId]?.units || "",
+                fecha: m.datetime?.utc || null
+              }))
+            });
+          }
+          aqEstado = aqStations.length ? `${aqStations.length} estaciones OpenAQ en la cuenca.` : "OpenAQ no tiene estaciones dentro de la cuenca.";
+        } else {
+          aqEstado = `OpenAQ respondió HTTP ${locRes.status}.`;
         }
-      ];
+      } catch (e: any) {
+        aqEstado = `OpenAQ no disponible: ${e.message}`;
+      }
     }
 
     return res.json({
@@ -388,52 +472,22 @@ app.get("/api/satellite-connection", async (req, res) => {
       bbox: [minLon, minLat, maxLon, maxLat],
       scenesCount: scenes.length,
       scenes: scenes,
-      aqStations: aqStations
+      catalogoError,
+      aqStations: aqStations,
+      aqEstado
     });
 
   } catch (_error: any) {
-    console.log("[HSE Monitor Satellite Enlace] Activando catálogo satelital de respaldo.");
+    console.log("[HSE Monitor Satellite Enlace] Error consultando catálogo:", _error?.message);
     return res.json({
-      success: true,
+      success: false,
       credentialsLoaded,
       authenticated: false,
       authStatus,
-      authErrorMsg: _error?.message || "Conexión a catálogo satelital de respaldo",
-      source: "Modelos de Teledetección y Catálogo Satelital de Vaca Muerta",
-      scenes: [
-        {
-          id: "S2C_MSIL2A_20261105T142751_N0513_R053_T19HDT",
-          platform: "Sentinel-2C (ESA)",
-          datetime: new Date().toISOString(),
-          cloudCover: 1.4,
-          title: "Mapeo Multiespectral HD Vaca Muerta Sector Centro (Añelo)",
-          dataSize: "1038 MB - MSI L2A",
-          sensor: "MultiSpectral Instrument (MSI)",
-          thumbnailUrl: "https://images.unsplash.com/photo-1614728894747-a83421e2b9c9?q=80&w=400&auto=format&fit=crop"
-        },
-        {
-          id: "S5P_NRTI_L2__CH4____20261105T225232_46968_03",
-          platform: "Sentinel-5 Precursor (Copernicus)",
-          datetime: new Date().toISOString(),
-          cloudCover: 0.0,
-          title: "Diagnóstico de Metano CH4 (Vaca Muerta Orbit Tracker)",
-          dataSize: "312 MB - Atmospheric TROPOMI",
-          sensor: "TROPOMI Atmospheric Tracker",
-          thumbnailUrl: "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?q=80&w=400&auto=format&fit=crop"
-        }
-      ],
-      aqStations: [
-        {
-          location: "Neuquén CAMS Station 1",
-          city: "Neuquén",
-          coordinates: { latitude: -38.9516, longitude: -68.0591 },
-          measurements: [
-            { parameter: "no2", value: 14.5, unit: "µg/m³" },
-            { parameter: "so2", value: 3.2, unit: "µg/m³" },
-            { parameter: "pm10", value: 22, unit: "µg/m³" }
-          ]
-        }
-      ]
+      authErrorMsg: _error?.message || "No se pudo consultar el catálogo Copernicus",
+      source: "Sin conexión al catálogo (no se muestran datos simulados)",
+      scenes: [],
+      aqStations: []
     });
   }
 });
@@ -738,65 +792,36 @@ Adapta el diagnóstico de manera estricta al cuerpo de agua seleccionado (${name
   }
 });
 
-const COORDENADAS_REALES_CATASTRO: Record<string, { lat: number; lon: number; radio_tolerancia_metros: number }> = {
-  CPF_LOMA_CAMPANA: { lat: -38.3580, lon: -68.7130, radio_tolerancia_metros: 400 },
-  CPF_FORTIN_DE_PIEDRA: { lat: -38.2570, lon: -68.8920, radio_tolerancia_metros: 400 },
-  EL_OREJANO: { lat: -37.9650, lon: -69.1920, radio_tolerancia_metros: 400 },
-  CRUZ_DE_LORENA: { lat: -38.3410, lon: -68.7950, radio_tolerancia_metros: 250 },
-  CPF_LA_CALERA: { lat: -38.3750, lon: -68.8450, radio_tolerancia_metros: 400 },
-  BS_FL4: { lat: -38.3880, lon: -68.7850, radio_tolerancia_metros: 250 },
-  TRATAYEN_TGS: { lat: -38.4120, lon: -68.6320, radio_tolerancia_metros: 400 }
-};
-
-const calcularDistanciaHaversine = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-  const R = 6371000;
-  const dLat = ((lat2 - lat1) * Math.PI) / 180;
-  const dLon = ((lon2 - lon1) * Math.PI) / 180;
-  const a =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos((lat1 * Math.PI) / 180) *
-      Math.cos((lat2 * Math.PI) / 180) *
-      Math.sin(dLon / 2) *
-      Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return Math.round(R * c);
-};
-
-// Regla de validación para evitar falsos posicionamientos
+// Regla de validación de posicionamiento contra el catastro cargado por el usuario
 const verificarPosicionPlanta = (id_planta: string, lat_detectada: number, lon_detectada: number) => {
-  let refKey = id_planta;
-  if (id_planta.includes("loma-campana") || id_planta.includes("Loma Campana") || id_planta.includes("LOMA_CAMPANA")) refKey = "CPF_LOMA_CAMPANA";
-  if (id_planta.includes("bandurria") || id_planta.includes("bs4") || id_planta.includes("BS_FL4") || id_planta.includes("BS-FL4")) refKey = "BS_FL4";
-  if (id_planta.includes("orejano") || id_planta.includes("Orejano") || id_planta.includes("EL_OREJANO")) refKey = "EL_OREJANO";
-
-  if (refKey in COORDENADAS_REALES_CATASTRO) {
-    const ref = COORDENADAS_REALES_CATASTRO[refKey];
-    // Calcular distancia entre lo detectado por el satélite y la planta real
-    const distancia = calcularDistanciaHaversine(lat_detectada, lon_detectada, ref.lat, ref.lon);
-    
-    if (distancia > ref.radio_tolerancia_metros) {
-      return {
-        valido: false,
-        mensaje: `Error de posicionamiento: La alerta se ubicó a ${distancia}m de la planta real. Posible confusión con Cargadero.`,
-        distancia_metros: distancia,
-        tolerancia_metros: ref.radio_tolerancia_metros,
-        coordenadas_oficiales: ref
-      };
-    }
-
+  const ref = buscarInstalacionSig(id_planta);
+  if (!ref || !Number.isFinite(lat_detectada) || !Number.isFinite(lon_detectada)) {
     return {
       valido: true,
-      mensaje: "Posicionamiento dentro del rango oficial.",
-      distancia_metros: distancia,
-      tolerancia_metros: ref.radio_tolerancia_metros,
-      coordenadas_oficiales: ref
+      planta_registrada: false,
+      mensaje: "La instalación no está en el catastro cargado: no se puede validar su posición.",
+      distancia_metros: 0
     };
   }
-
+  const distancia = Math.round(calcular_distancia_haversine(lat_detectada, lon_detectada, ref.latitud_oficial, ref.longitud_oficial));
+  const coordenadas_oficiales = { lat: ref.latitud_oficial, lon: ref.longitud_oficial, radio_tolerancia_metros: ref.radio_tolerancia_metros };
+  if (distancia > ref.radio_tolerancia_metros) {
+    return {
+      valido: false,
+      planta_registrada: true,
+      mensaje: `La detección está a ${distancia} m de ${ref.nombre_oficial} (tolerancia ${ref.radio_tolerancia_metros} m): no corresponde asociarla.`,
+      distancia_metros: distancia,
+      tolerancia_metros: ref.radio_tolerancia_metros,
+      coordenadas_oficiales
+    };
+  }
   return {
     valido: true,
-    mensaje: "Posicionamiento dentro del rango oficial.",
-    distancia_metros: 0
+    planta_registrada: true,
+    mensaje: "Posición dentro de la tolerancia de la instalación catastrada.",
+    distancia_metros: distancia,
+    tolerancia_metros: ref.radio_tolerancia_metros,
+    coordenadas_oficiales
   };
 };
 
@@ -804,7 +829,7 @@ const verificarPosicionPlanta = (id_planta: string, lat_detectada: number, lon_d
 app.post("/api/validar-posicion-planta", (req, res) => {
   const { id_planta, lat_detectada, lon_detectada } = req.body;
   const resultado = verificarPosicionPlanta(
-    String(id_planta || "BS_FL4"), 
+    String(id_planta || ""), 
     Number(lat_detectada), 
     Number(lon_detectada)
   );
@@ -816,7 +841,7 @@ app.get("/api/geoportal/instalaciones", (_req, res) => {
   const store = getGeoJsonStore();
   const instalaciones = getInstalacionesSigOficiales();
   return res.json({
-    fuente: "Geoportal SIG Hidrocarburífero Oficial (SEN / IDENEU / IAPG)",
+    fuente: "Catastro cargado por el usuario (KML / GeoJSON)",
     alcance: "Cuenca Neuquina Activa (Vaca Muerta)",
     total_instalaciones: instalaciones.length,
     geojson_store: store,
@@ -830,6 +855,7 @@ app.post("/api/geoportal/cargar-capa", (req, res) => {
     const { geojson, mode = "merge" } = req.body || {};
     const payload = geojson !== undefined ? geojson : req.body;
     const resultado = ingestarCapaGeoJson(payload, mode);
+    guardarCatastro();
     const crucesActualizados = ejecutarCruceEspacialSatelital();
     return res.json({
       success: true,
@@ -855,10 +881,11 @@ app.post("/api/geoportal/cargar-capa", (req, res) => {
 // Endpoint POST para restablecer el catastro a la base oficial
 app.post("/api/geoportal/reset", (_req, res) => {
   const store = resetToOfficialDefaults();
+  guardarCatastro();
   const cruces = ejecutarCruceEspacialSatelital();
   return res.json({
     success: true,
-    mensaje: "Almacén catastral restablecido a la base oficial de la Secretaría de Energía (SEN/IDENEU).",
+    mensaje: "Catastro vaciado. Cargue su capa KML/GeoJSON verificada.",
     total_instalaciones: store.features.length,
     geojson_store: store,
     instalaciones: getInstalacionesSigOficiales(),
@@ -883,6 +910,7 @@ app.post("/api/geoportal/registrar-instalacion", (req, res) => {
       radio_tolerancia_metros,
       cupo_sen_m3d
     });
+    guardarCatastro();
     const cruces = ejecutarCruceEspacialSatelital();
     return res.json({
       success: true,
@@ -896,16 +924,18 @@ app.post("/api/geoportal/registrar-instalacion", (req, res) => {
 });
 
 // Endpoint de Monitoreo Satelital en Vivo y Cruce Espacial Automático (NASA FIRMS & Sentinel-2)
-app.get("/api/venteos/monitoreo-satelital-en-vivo", (_req, res) => {
+app.get("/api/venteos/monitoreo-satelital-en-vivo", async (req, res) => {
+  const estado = await actualizarFirms(req.query.forzar === "1");
   const cruces = ejecutarCruceEspacialSatelital();
   const matches = cruces.filter(c => c.match_catastral);
   const anomalias = cruces.filter(c => !c.match_catastral);
   
   return res.json({
     fuentes_satelitales: [
-      "NASA FIRMS VIIRS (NOAA-20 / Suomi-NPP / NOAA-21)",
-      "Copernicus Sentinel-2 MSI L2A (SWIR B11/B12)"
+      "NASA FIRMS VIIRS (NOAA-20 / NOAA-21 / Suomi-NPP)"
     ],
+    estado_firms: estado,
+    total_instalaciones_catastro: getInstalacionesSigOficiales().length,
     bounding_box_cuenca: {
       latitud: [-37.0, -39.5],
       longitud: [-67.5, -70.5]
@@ -996,12 +1026,40 @@ app.post("/api/analyze-venteo", async (req, res) => {
       nearestTown,
       nearestTownDistanceKm,
       windSpeed,
-      windDirection
+      windDirection,
+      frpMW,
+      sensor,
+      fechaUtc
     } = req.body;
 
+    // Si no hay tasa de quema medida (caso FIRMS), NO se inventan valores ni sanciones.
+    const tasaConocida = burnRateM3Day !== null && burnRateM3Day !== undefined && Number.isFinite(Number(burnRateM3Day));
+    if (!tasaConocida) {
+      const validacionPosicion = verificarPosicionPlanta(flareId || name, Number(latitude), Number(longitude));
+      return res.json({
+        success: true,
+        flareId,
+        emisiones_estimadas: { ch4_fugitivo_ton_ano: null, co2_ton_ano: null, so2_kg_dia: null, nox_kg_dia: null, black_carbon_kg_dia: null },
+        validacion_posicion_catastro: validacionPosicion,
+        calificacion_legal: "Sin datos suficientes para calificar",
+        score_infraccion: 0,
+        es_infraccion_grave: false,
+        diagnostico_termodinamico: `Detección térmica ${sensor || "satelital"} del ${fechaUtc || "-"} en [${latitude}, ${longitude}] con potencia radiativa de ${frpMW ?? "N/D"} MW. El satélite confirma presencia de llama/calor, pero no mide caudal quemado, eficiencia de combustión ni venteo frío. No es posible estimar emisiones ni infracciones con este dato.`,
+        impacto_poblacion_cercana: nearestTown ? `Localidad más cercana: ${nearestTown} a ${nearestTownDistanceKm} km.` : "Sin dato.",
+        dispersion_pluma_viento: "No se modela dispersión: no hay caudal ni datos de viento medidos para este foco.",
+        medidas_ingenieriles_mitigacion: [
+          "Verificar el foco con imagen satelital de alta resolución (botón Google Earth).",
+          "Contrastar con el parte de quema/venteo declarado por el operador para esa fecha.",
+          "Si es una instalación propia, registrar caudal real (medidor) para habilitar la estimación de emisiones."
+        ],
+        sancion_estimada_pesos_o_modulos: "No aplica sin datos medidos",
+        plazo_intimacion_horas: 0
+      });
+    }
+
     // Calculate emissions formulas according to EPA AP-42 & World Bank GGFR flaring guidelines
-    const rate = Number(burnRateM3Day) || 15000;
-    const eff = Number(combustionEfficiency) || 92;
+    const rate = Number(burnRateM3Day);
+    const eff = Number(combustionEfficiency) || 98;
     const unburnedFrac = Math.max(0.005, (100 - eff) / 100);
     const ch4FugitiveTonYear = Math.round((rate * 365 * 0.72 * 0.88 * unburnedFrac) / 1000);
     const co2TonYear = Math.round((rate * 365 * 0.72 * (1 - unburnedFrac) * 2.75) / 1000);
