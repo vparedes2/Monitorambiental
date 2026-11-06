@@ -1,6 +1,5 @@
 import express from "express";
 import path from "path";
-import { createServer as createViteServer } from "vite";
 import { GoogleGenAI, Type } from "@google/genai";
 import dotenv from "dotenv";
 import { 
@@ -10,8 +9,8 @@ import {
   resetToOfficialDefaults, 
   agregarInstalacionIndividual,
   buscarInstalacionSig
-} from "./src/services/geoportalSigService";
-import { calcular_distancia_haversine } from "./src/services/cadastralValidation";
+} from "./src/services/geoportalSigService.js";
+import { calcular_distancia_haversine } from "./src/services/cadastralValidation.js";
 import { 
   ejecutarCruceEspacialSatelital, 
   ingestarDeteccionSatelital, 
@@ -20,7 +19,7 @@ import {
   setDeteccionesFirms,
   FIRMS_SOURCES,
   BBOX_CUENCA
-} from "./src/services/satelliteDetectionsService";
+} from "./src/services/satelliteDetectionsService.js";
 import fs from "fs";
 
 dotenv.config();
@@ -31,7 +30,9 @@ const limpiarEnv = (v?: string) => (v || "").replace(/^["']|["']$/g, "").trim();
 // Persistencia del catastro cargado por el usuario (sobrevive a reinicios
 // mientras el disco del contenedor exista; el navegador además guarda copia).
 // ---------------------------------------------------------------------------
-const CATASTRO_FILE = path.join(process.cwd(), "data", "catastro.geojson");
+const CATASTRO_FILE = process.env.VERCEL
+  ? path.join("/tmp", "catastro.geojson")
+  : path.join(process.cwd(), "data", "catastro.geojson");
 const guardarCatastro = () => {
   try {
     fs.mkdirSync(path.dirname(CATASTRO_FILE), { recursive: true });
@@ -1430,6 +1431,7 @@ async function startServer() {
   // Vite integration
   if (process.env.NODE_ENV !== "production") {
     console.log("Starting server in development mode with Vite HMR...");
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
@@ -1449,4 +1451,9 @@ async function startServer() {
   });
 }
 
-startServer();
+// En Vercel la app se exporta como función serverless (api/index.ts)
+if (!process.env.VERCEL) {
+  startServer();
+}
+
+export default app;

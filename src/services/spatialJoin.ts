@@ -13,8 +13,8 @@
  *        en la coordenada nativa reportada por el satélite con enlace de verificación en Google Earth HD.
  */
 
-import { InstalacionSigOficial, normalizarCoordenadasCuenca } from "./geoportalSigService";
-import { calcular_distancia_haversine } from "./cadastralValidation";
+import { InstalacionSigOficial, normalizarCoordenadasCuenca } from "./geoportalSigService.js";
+import { calcular_distancia_haversine } from "./cadastralValidation.js";
 
 export type SensorSatelital = string;
 

@@ -9,13 +9,13 @@
  * Bounding Box Cuenca Neuquina (Vaca Muerta): Lat [-37.0 a -39.5], Lon [-67.5 a -70.5]
  */
 
-import { getInstalacionesSigOficiales } from "./geoportalSigService";
+import { getInstalacionesSigOficiales } from "./geoportalSigService.js";
 import {
   DeteccionSatelitalRaw,
   CruceEspacialVenteo,
   SensorSatelital,
   resolverCruceEspacialIndividual
-} from "./spatialJoin";
+} from "./spatialJoin.js";
 
 export type { DeteccionSatelitalRaw, CruceEspacialVenteo, SensorSatelital };
 

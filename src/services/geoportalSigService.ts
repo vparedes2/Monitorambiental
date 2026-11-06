@@ -11,7 +11,7 @@
  * - Cuenca Neuquina Bounding Box: Lat [-37.0 a -39.5], Lon [-67.5 a -70.5]
  */
 
-import { GeoJsonFeature, GeoJsonFeatureCollection } from "../types";
+import type { GeoJsonFeature, GeoJsonFeatureCollection } from "../types.js";
 
 export interface InstalacionSigOficial {
   codigo_sig: string;
