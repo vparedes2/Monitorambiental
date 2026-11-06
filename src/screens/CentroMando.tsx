@@ -6,10 +6,14 @@ import { LogoMarca } from "../components/Logo";
 import { useFirms, useTle, parseFechaFirms, usePrefiereMenosMovimiento } from "../lib/useData";
 import { prepararSatelites, posicion, proximaPasada, fmtCuenta, ANELO } from "../lib/orbits";
 import { SkipForward, RotateCcw, FileDown } from "lucide-react";
+import { useSigNeuquen, clasificarFoco, CLASES, TOLERANCIA_M, type Clase } from "../lib/neuquen";
 import { capturarMapa, generarInformePDF, descargarTexto, focosKml, focosCsv, nombreArchivo, AUTOR, type ItemLeyenda } from "../lib/exportar";
 
 const LEYENDA_INICIO: ItemLeyenda[] = [
-  { color: "#FF8A3D", texto: "Foco térmico NASA FIRMS (últimas 48 h)", forma: "circulo" },
+  { color: "#7BD88F", texto: "Foco junto a venteo autorizado vigente", forma: "circulo" },
+  { color: "#FF8A3D", texto: "Foco junto a instalación sin permiso registrado", forma: "circulo" },
+  { color: "#FF4D6D", texto: "Foco lejos de instalaciones declaradas", forma: "circulo" },
+  { color: "#8BA0B6", texto: "Foco fuera del registro de Neuquén", forma: "circulo" },
   { color: "#C9A46A", texto: "Cuenca Neuquina, área vigilada", forma: "linea" },
   { color: "#8FE3F0", texto: "Satélite, posición al momento de exportar" }
 ];
@@ -23,7 +27,7 @@ const ACTOS = [
 const DURACION_MS = 11000;
 
 export default function CentroMando({ irA }: { irA: (r: string) => void }) {
-  const { focos, estado, catastro } = useFirms();
+  const { focos, estado } = useFirms();
   const { satelites } = useTle();
   const reduce = usePrefiereMenosMovimiento();
   const mapRef = useRef<MLMap | null>(null);
@@ -35,6 +39,20 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
   const [focoSel, setFocoSel] = useState<number | null>(null);
 
   const sats = useMemo(() => prepararSatelites(satelites), [satelites]);
+  const sig = useSigNeuquen();
+  const clases = useMemo(() => focos.map((f) => clasificarFoco(f.lat, f.lon, sig.instalaciones, sig.venteos, sig.areas)), [focos, sig.instalaciones, sig.venteos, sig.areas]);
+  const conteo = useMemo(() => {
+    const k: Record<Clase, number> = { autorizado: 0, vencido: 0, instalacion: 0, fuera: 0, sin_registro: 0 };
+    if (sig.instalaciones.length) clases.forEach((c) => k[c.clase]++);
+    return k;
+  }, [clases, sig.instalaciones.length]);
+  const referencia = (i: number) => {
+    const c = clases[i];
+    if (!c || !sig.instalaciones.length) return "Registro provincial cargando…";
+    if (c.venteo && c.venteo.distancia <= TOLERANCIA_M) return `${c.venteo.item.instalacion} (${c.venteo.item.empresa}), ${Math.round(c.venteo.distancia)} m`;
+    if (c.instalacion && c.instalacion.distancia <= TOLERANCIA_M) return `${c.instalacion.item.nombre} (${c.instalacion.item.operador}), ${Math.round(c.instalacion.distancia)} m`;
+    return c.area ? `Área ${c.area.nombre}` : "Fuera de las áreas de Neuquén";
+  };
 
   // Reloj de 1 s para satélites y cuentas regresivas
   useEffect(() => {
@@ -94,7 +112,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
       type: "FeatureCollection",
       features: focos.map((f) => ({
         type: "Feature",
-        properties: { frp: f.frp, match: f.match, idx: focos.indexOf(f) },
+        properties: { frp: f.frp, match: f.match, idx: focos.indexOf(f), color: sig.instalaciones.length && clases[focos.indexOf(f)] ? CLASES[clases[focos.indexOf(f)].clase].color : "#FF8A3D" },
         geometry: { type: "Point", coordinates: [f.lon, f.lat] }
       }))
     };
@@ -110,7 +128,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
       map.addLayer({
         id: "focos-nucleo", type: "circle", source: "focos",
         paint: {
-          "circle-color": ["case", ["get", "match"], "#FFD3A8", "#FF8A3D"],
+          "circle-color": ["get", "color"],
           "circle-radius": ["interpolate", ["linear"], ["zoom"], 2, 1.5, 8, 4],
           "circle-stroke-color": "#0A1628", "circle-stroke-width": 1
         }
@@ -135,7 +153,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
     };
     raf = requestAnimationFrame(latido);
     return () => cancelAnimationFrame(raf);
-  }, [focos, listo, reduce]);
+  }, [focos, listo, reduce, clases]);
 
   // Satélites reales como marcadores que se mueven
   useEffect(() => {
@@ -181,7 +199,6 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
   }, [focos]);
   const maxBin = Math.max(1, ...histo);
   const frpTotal = focos.reduce((a, f) => a + f.frp, 0);
-  const sinCatastro = focos.filter((f) => !f.match).length;
 
   const exportarInforme = async () => {
     const map = mapRef.current;
@@ -197,9 +214,9 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
           titulo: "Resumen",
           texto: [
             `Se detectaron ${focos.length} focos térmicos dentro del recuadro de la Cuenca Neuquina (lat -37 a -39,5; lon -67,5 a -70,5) en las últimas 48 horas.`,
-            catastro === 0
-              ? "No hay catastro de instalaciones cargado: los focos no se asociaron a instalaciones."
-              : `${focos.length - sinCatastro} focos quedaron asociados a instalaciones del catastro y ${sinCatastro} no tienen instalación cargada dentro de la tolerancia.`,
+            ...(sig.instalaciones.length
+              ? (Object.keys(CLASES) as Clase[]).map((k) => `${CLASES[k].nombre}: ${conteo[k]} focos.`)
+              : ["El registro provincial de instalaciones no estaba disponible al generar el informe."]),
             "FIRMS detecta llamas y superficies calientes (antorchas, incendios, quemas). No mide caudal quemado ni venteo frío."
           ]
         },
@@ -207,7 +224,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
           titulo: "Detalle de focos",
           tabla: {
             columnas: ["Fecha y hora (UTC)", "Sensor", "Latitud", "Longitud", "FRP (MW)", "Clasificación"],
-            filas: [...focos].sort((a, b) => b.frp - a.frp).map((f) => [f.fecha, f.sensor.replace("NASA FIRMS ", ""), f.lat.toFixed(5), f.lon.toFixed(5), f.frp.toFixed(2), f.match ? `Asociado: ${f.instalacion ?? ""}` : "Sin instalación cerca"])
+            filas: focos.map((f, i) => ({ f, i })).sort((a, b) => b.f.frp - a.f.frp).map(({ f, i }) => [f.fecha, f.sensor.replace("NASA FIRMS ", ""), f.lat.toFixed(5), f.lon.toFixed(5), f.frp.toFixed(2), clases[i] ? `${CLASES[clases[i].clase].nombre}. ${referencia(i)}` : "—"])
           }
         },
         {
@@ -218,7 +235,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
           }
         }
       ],
-      metodo: "Focos: API pública de NASA FIRMS (VIIRS NOAA-20, NOAA-21 y Suomi NPP, productos de tiempo casi real). FRP: potencia radiativa del fuego. Pasadas: elementos orbitales de CelesTrak propagados con SGP4, umbral de 10° sobre el horizonte. Mapa base: imágenes satelitales de terceros según atribución.",
+      metodo: "Clasificación: registro oficial de instalaciones, venteos autorizados y áreas del SIG de Hidrocarburos de la Subsecretaría de Energía de Neuquén, con tolerancia de 1 km. Focos: API pública de NASA FIRMS (VIIRS NOAA-20, NOAA-21 y Suomi NPP, productos de tiempo casi real). FRP: potencia radiativa del fuego. Pasadas: elementos orbitales de CelesTrak propagados con SGP4, umbral de 10° sobre el horizonte. Mapa base: imágenes satelitales de terceros según atribución.",
       archivo: nombreArchivo("informe-focos-vaca-muerta", "pdf")
     });
   };
@@ -283,7 +300,10 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
                       <div className="flex justify-between gap-3"><dt className="text-tenue">Fecha</dt><dd className="num text-xs">{f.fecha}</dd></div>
                       <div className="flex justify-between gap-3"><dt className="text-tenue">Sensor</dt><dd className="text-xs text-right">{f.sensor.replace("NASA FIRMS ", "")}</dd></div>
                       <div className="flex justify-between gap-3"><dt className="text-tenue">Posición</dt><dd className="num text-xs">{f.lat.toFixed(4)}, {f.lon.toFixed(4)}</dd></div>
-                      <div className="flex justify-between gap-3"><dt className="text-tenue">Catastro</dt><dd className="text-xs text-right">{f.match ? f.instalacion : "Sin instalación cerca"}</dd></div>
+                      {clases[focoSel] && sig.instalaciones.length > 0 && (
+                        <div className="flex justify-between gap-3"><dt className="text-tenue">Registro</dt><dd className="text-xs text-right" style={{ color: CLASES[clases[focoSel].clase].color }}>{CLASES[clases[focoSel].clase].nombre}</dd></div>
+                      )}
+                      <div className="flex justify-between gap-3"><dt className="text-tenue shrink-0">Referencia</dt><dd className="text-xs text-right">{referencia(focoSel)}</dd></div>
                     </dl>
                     <a className="mt-3 block text-center text-xs px-3 py-1.5 border border-linea text-hielo hover:border-hielo" target="_blank" rel="noopener"
                       href={`https://earth.google.com/web/@${f.lat},${f.lon},0a,1500d,35y,0h,45t,0r`}>Ver en Google Earth ↗</a>
@@ -330,7 +350,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
               transition={{ duration: 0.5 }}
               className="hidden lg:block absolute right-8 top-8 w-[340px] instrumento p-5"
             >
-              <PanelLectura {...{ focos: focos.length, frpTotal, sinCatastro, catastro, estado, histo, maxBin, irA, ...exportes }} />
+              <PanelLectura {...{ focos: focos.length, frpTotal, conteo, sigListo: sig.instalaciones.length > 0, estado, histo, maxBin, irA, ...exportes }} />
             </motion.aside>
           )}
         </AnimatePresence>
@@ -338,7 +358,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
 
       {/* Panel de lectura en móvil */}
       <div className="lg:hidden px-4 py-5 instrumento mx-3 -mt-2 relative z-10">
-        <PanelLectura {...{ focos: focos.length, frpTotal, sinCatastro, catastro, estado, histo, maxBin, irA, ...exportes }} />
+        <PanelLectura {...{ focos: focos.length, frpTotal, conteo, sigListo: sig.instalaciones.length > 0, estado, histo, maxBin, irA, ...exportes }} />
       </div>
 
       {/* Próximas pasadas */}
@@ -373,7 +393,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
   );
 }
 
-function PanelLectura({ focos, frpTotal, sinCatastro, catastro, estado, histo, maxBin, irA, exportarInforme, exportarKml, exportarCsv }: any) {
+function PanelLectura({ focos, frpTotal, conteo, sigListo, estado, histo, maxBin, irA, exportarInforme, exportarKml, exportarCsv }: any) {
   return (
     <div>
       <p className="text-xs text-tenue">Últimas 48 h, NASA FIRMS (VIIRS 375 m). Tocá un foco en el mapa para acercarte.</p>
@@ -408,16 +428,23 @@ function PanelLectura({ focos, frpTotal, sinCatastro, catastro, estado, histo, m
       </svg>
 
       <div className="mt-4 pt-4 border-t border-linea text-sm space-y-1.5">
-        {catastro === 0 ? (
-          <p className="text-tenue">Sin catastro cargado: los focos todavía no se asocian a instalaciones.</p>
+        {!sigListo ? (
+          <p className="text-tenue">Cargando el registro provincial de instalaciones…</p>
         ) : (
-          <p><span className="num text-lutita">{sinCatastro}</span> <span className="text-tenue">focos sin instalación cargada cerca</span></p>
+          <ul className="space-y-1">
+            {(Object.keys(CLASES) as Clase[]).filter((k) => conteo[k] > 0).map((k) => (
+              <li key={k} className="flex items-center justify-between gap-2 text-xs">
+                <span className="flex items-center gap-2"><span className="w-2 h-2 rounded-full shrink-0" style={{ background: CLASES[k].color }} />{CLASES[k].nombre}</span>
+                <span className="num">{conteo[k]}</span>
+              </li>
+            ))}
+          </ul>
         )}
         {estado && estado.estado !== "ok" && <p className="text-llama text-xs">{estado.mensaje}</p>}
       </div>
       <div className="mt-4 flex gap-2">
         <button onClick={() => irA("focos")} className="flex-1 px-3 py-2 text-sm bg-llama text-noche font-semibold hover:brightness-110">Analizar focos</button>
-        <button onClick={() => irA("focos")} className="px-3 py-2 text-sm border border-linea hover:border-lutita text-lutita">Cargar catastro</button>
+        <button onClick={() => irA("instalaciones")} className="px-3 py-2 text-sm border border-linea hover:border-lutita text-lutita">Instalaciones</button>
       </div>
       <div className="mt-2 flex flex-wrap gap-2 text-xs">
         <button onClick={exportarInforme} disabled={!focos} className="flex items-center gap-1.5 px-2.5 py-1.5 border border-linea text-hielo hover:border-hielo disabled:opacity-50">

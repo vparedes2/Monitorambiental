@@ -1,5 +1,5 @@
 import React, { Suspense, lazy, useEffect, useState } from "react";
-import { Globe2, Orbit, Flame, Images, FlaskConical, Droplets } from "lucide-react";
+import { Globe2, Orbit, Flame, Images, FlaskConical, Droplets, Factory } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { LogoMarca } from "./components/Logo";
 
@@ -7,6 +7,7 @@ const CentroMando = lazy(() => import("./screens/CentroMando"));
 const Orbitas = lazy(() => import("./screens/Orbitas"));
 const Imagenes = lazy(() => import("./screens/Imagenes"));
 const SueloAgua = lazy(() => import("./screens/SueloAgua"));
+const Instalaciones = lazy(() => import("./screens/Instalaciones"));
 const TableroDemo = lazy(() => import("./screens/TableroDemo"));
 
 class Resguardo extends React.Component<{ children: React.ReactNode; clave: string }, { error: string | null }> {
@@ -31,11 +32,12 @@ class Resguardo extends React.Component<{ children: React.ReactNode; clave: stri
   }
 }
 
-type Ruta = "inicio" | "orbitas" | "focos" | "suelo" | "catalogo" | "demo";
+type Ruta = "inicio" | "orbitas" | "instalaciones" | "focos" | "suelo" | "catalogo" | "demo";
 
 const RUTAS: { id: Ruta; nombre: string; corto?: string; icono: React.ElementType }[] = [
   { id: "inicio", nombre: "Inicio", icono: Globe2 },
   { id: "orbitas", nombre: "Órbitas", icono: Orbit },
+  { id: "instalaciones", nombre: "Instalaciones", corto: "Plantas", icono: Factory },
   { id: "focos", nombre: "Focos", icono: Flame },
   { id: "suelo", nombre: "Suelo y agua", corto: "Suelo", icono: Droplets },
   { id: "catalogo", nombre: "Imágenes", icono: Images },
@@ -122,6 +124,7 @@ export default function App() {
           <motion.div key={ruta} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
           {ruta === "inicio" && <CentroMando irA={irA} />}
           {ruta === "orbitas" && <Orbitas />}
+          {ruta === "instalaciones" && <Instalaciones />}
           {ruta === "focos" && <TableroDemo vista="venteos" />}
           {ruta === "suelo" && <SueloAgua />}
           {ruta === "catalogo" && <Imagenes />}

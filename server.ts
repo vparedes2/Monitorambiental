@@ -859,13 +859,14 @@ const GEOSERVER_NQN = "https://hidrocarburos.energianeuquen.gob.ar/geoserver/Hid
 const CAPAS_WFS_NQN = new Set(["Areas", "Concesiones", "VM_Distribucion_Fluidos", "Ductos", "Instalaciones", "Locaciones", "Lineas_de_conduccion", "Pozos", "Pozos_VM", "Puntos_medicion", "Venteos"]);
 const cacheNqn: Record<string, { t: number; data: any }> = {};
 
-const wfsNqn = async (capa: string, opciones: { props?: string[]; cql?: string; max?: number } = {}) => {
+const GEOM_NQN: Record<string, string> = { Instalaciones: "Shape", Ductos: "Shape" };
+const wfsNqn = async (capa: string, opciones: { props?: string[]; cql?: string; max?: number; geom?: string } = {}) => {
   if (!CAPAS_WFS_NQN.has(capa)) throw new Error(`Capa desconocida: ${capa}`);
   const p = new URLSearchParams({
     service: "WFS", version: "1.0.0", request: "GetFeature", typeName: `Hidrocarburos:${capa}`,
     outputFormat: "application/json", srsName: "EPSG:4326"
   });
-  if (opciones.props?.length) p.set("propertyName", ["SHAPE", ...opciones.props].join(","));
+  if (opciones.props?.length) p.set("propertyName", [opciones.geom || GEOM_NQN[capa] || "SHAPE", ...opciones.props].join(","));
   if (opciones.cql) p.set("CQL_FILTER", opciones.cql);
   if (opciones.max) p.set("maxFeatures", String(opciones.max));
   const clave = p.toString();
@@ -909,6 +910,36 @@ const CAPAS_NQN: Record<string, () => Promise<any>> = {
     motivo: limpio(p.MOTIVO), disposicion: limpio(p.DISPOSICIO), permiso: fechaIso(p.PERMISO_DA), inicio: fechaIso(p.FECHA_INIC), vencimiento: fechaIso(p.FECHA_VENC),
     m3_dia_autorizado: typeof p.m3_dia_AUT === "number" ? p.m3_dia_AUT : numAr(p.m3_dia_AUT), promedio_venteado: p.PROM_VENTE ?? null
   })),
+  sumideros: async () => recortar(await wfsNqn("Pozos", {
+    cql: "FLUIDO='SUM'", max: 5000,
+    props: ["WELL_NAME", "ESTADO_GIS", "OPERADOR", "AREA_LEGAL", "YACIMIENTO", "FORM_PROD", "AÑO_PERF", "TYPE_NAME", "PROFUNDIDAD_MEDIDA", "SIST_EXTRACCION"]
+  }), (p) => ({
+    nombre: limpio(p.WELL_NAME), estado: limpio(p.ESTADO_GIS), operador: limpio(p.OPERADOR), area: limpio(p.AREA_LEGAL), yacimiento: limpio(p.YACIMIENTO),
+    formacion: limpio(p.FORM_PROD), anio: p["AÑO_PERF"] ?? null, profundidad_m: p.PROFUNDIDAD_MEDIDA || null
+  })),
+  areas: async () => {
+    const fc = await wfsNqn("Areas", { props: ["NOMBRE", "OPERADOR", "TITULAR", "TIPO_AREA", "SIGLA", "FIN_CONTRATO"] });
+    // Simplificación: coordenadas a 4 decimales y se descartan vértices a menos de ~60 m del anterior
+    const simpl = (anillo: number[][]) => {
+      const out: number[][] = [];
+      for (const [x, y] of anillo) {
+        const q = [Math.round(x * 1e4) / 1e4, Math.round(y * 1e4) / 1e4];
+        const u = out[out.length - 1];
+        if (!u || Math.abs(u[0] - q[0]) + Math.abs(u[1] - q[1]) > 0.0007) out.push(q);
+      }
+      if (out.length > 2) { const a = out[0], b = out[out.length - 1]; if (a[0] !== b[0] || a[1] !== b[1]) out.push(a); }
+      return out;
+    };
+    for (const f of fc.features || []) {
+      const g = f.geometry;
+      if (!g) continue;
+      if (g.type === "Polygon") g.coordinates = g.coordinates.map(simpl).filter((r: any) => r.length >= 4);
+      if (g.type === "MultiPolygon") g.coordinates = g.coordinates.map((pol: any) => pol.map(simpl).filter((r: any) => r.length >= 4)).filter((pol: any) => pol.length);
+    }
+    return recortar(fc, (p) => ({
+      nombre: limpio(p.NOMBRE), sigla: limpio(p.SIGLA), operador: limpio(p.OPERADOR), titular: limpio(p.TITULAR), tipo: limpio(p.TIPO_AREA), fin_contrato: fechaIso(p.FIN_CONTRATO)
+    }));
+  },
   ductos: async () => recortar(await wfsNqn("Ductos"), (p) => ({
     id: limpio(p.ID_DUCTO), nombre: limpio(p.NOMBRE), fluido: limpio(p.FLUIDO), tipo: limpio(p.TIPO), operador: limpio(p.OPERADOR),
     diametro_pulg: p.DIAMETRO ?? null, longitud_km: p.DISTANCIA ?? null, estado: limpio(p.ESTADO), desde: limpio(p.DESDE), hasta: limpio(p.HASTA)
@@ -933,7 +964,8 @@ app.get("/api/neuquen/wfs/:capa", async (req, res) => {
     const props = typeof req.query.props === "string" ? req.query.props.split(",").filter(Boolean) : undefined;
     const cql = typeof req.query.cql === "string" ? req.query.cql : undefined;
     const max = Math.min(5000, Number(req.query.max) || 1000);
-    const data = await wfsNqn(req.params.capa, { props, cql, max });
+    const geom = typeof req.query.geom === "string" ? req.query.geom : undefined;
+    const data = await wfsNqn(req.params.capa, { props, cql, max, geom });
     res.setHeader("Cache-Control", "public, s-maxage=43200");
     return res.json(data);
   } catch (e: any) {
