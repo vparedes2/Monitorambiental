@@ -176,7 +176,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
     <div className="relative">
       {/* Escenario del globo */}
       <section className="relative h-[78vh] min-h-[520px] lg:h-[calc(100vh-0px)] overflow-hidden bg-noche" aria-label="Globo terrestre con focos térmicos de Vaca Muerta">
-        <Globo centro={[-42, -18]} zoom={1.15} onListo={alListo} />
+        <Globo centro={[-42, -18]} zoom={1.15} onListo={alListo} posicionSelector="left-4 sm:left-8 bottom-24" />
 
         {/* Viñeta para legibilidad */}
         <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at center, transparent 45%, rgba(10,22,40,.75) 100%), linear-gradient(to bottom, rgba(10,22,40,.85) 0%, transparent 32%, transparent 78%, rgba(10,22,40,.9) 100%)" }} />

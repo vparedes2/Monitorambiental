@@ -94,7 +94,7 @@ export default function Imagenes() {
   const [error, setError] = useState<string | null>(null);
   const [imagenUrl, setImagenUrl] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
-  const [leyendaAbierta, setLeyendaAbierta] = useState(true);
+  const [leyendaAbierta, setLeyendaAbierta] = useState(() => typeof window === "undefined" || window.innerWidth >= 1024);
   const { focos } = useFirms();
 
   const capa = CAPAS.find((c) => c.id === capaId)!;
