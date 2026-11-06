@@ -1,0 +1,8 @@
+{
+  "name": "Remix Vaca Muerta HSE \u0026 Environmental Monitor",
+  "description": "Sistema de monitoreo ambiental, teledetección y análisis de riesgos HSE para la cuenca de Vaca Muerta, Neuquén. Permite identificar anomalías contaminantes mediante teledetección, viento de Windy y gases de CAMS, e integra análisis predictivo con IA.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,6 @@
+{
+  "summary": "Plan integral de implementación para la integración del Geoportal SIG Hidrocarburífero oficial de la Cuenca Neuquina junto a la detección satelital en vivo de NASA FIRMS (VIIRS) y ESA Copernicus (Sentinel-2), con motor de cruce espacial automático (Spatial Join) y eliminación total de coordenadas manuales.",
+  "updatedAt": "2026-11-06T02:05:21.558342124Z",
+  "requestFeedback": true,
+  "userFacing": true
+}
