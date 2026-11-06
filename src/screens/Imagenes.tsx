@@ -13,11 +13,21 @@ interface Capa {
   muestra: string;
   dias: number;
   leyenda?: { colores: string; min: string; max: string };
+  categorias?: { color: string; texto: string }[];
 }
 
 const CAPAS: Capa[] = [
   {
     id: "swir", nombre: "Antorchas e infrarrojo", satelite: "Sentinel-2", resolucion: "20 m", dias: 10,
+    categorias: [
+      { color: "#FFE14D", texto: "Llama o suelo muy caliente (punto amarillo/rojo brillante; acercate para verlo)" },
+      { color: "#0B0D12", texto: "Agua profunda (embalses, lagos)" },
+      { color: "#3D63C9", texto: "Agua poco profunda, humedad, vegetación de ribera" },
+      { color: "#5FD0F0", texto: "Nieve o hielo" },
+      { color: "#B9D86A", texto: "Vegetación (mallines, pasturas)" },
+      { color: "#8E8AA8", texto: "Suelo desnudo, estepa, locaciones" },
+      { color: "#F2F4F7", texto: "Nubes" }
+    ],
     muestra: "Combina bandas de infrarrojo de onda corta. Las llamas de antorchas y los suelos muy calientes aparecen como puntos amarillos o rojos brillantes; la vegetación se ve azul y el suelo desnudo en tonos claros."
   },
   {
@@ -47,6 +57,11 @@ const CAPAS: Capa[] = [
   },
   {
     id: "radar", nombre: "Radar", satelite: "Sentinel-1", resolucion: "10 m", dias: 12,
+    categorias: [
+      { color: "#FFFFFF", texto: "Estructuras metálicas, equipos, tanques, relieve de frente al satélite" },
+      { color: "#7A7F88", texto: "Suelo y vegetación (rugosidad media)" },
+      { color: "#0B0D12", texto: "Agua calma, superficies muy lisas" }
+    ],
     muestra: "Imagen de radar: funciona de noche y a través de las nubes. Las estructuras metálicas (tanques, equipos, cañerías) rebotan la señal y se ven muy brillantes."
   },
   {
@@ -79,6 +94,7 @@ export default function Imagenes() {
   const [error, setError] = useState<string | null>(null);
   const [imagenUrl, setImagenUrl] = useState<string | null>(null);
   const [info, setInfo] = useState<string | null>(null);
+  const [leyendaAbierta, setLeyendaAbierta] = useState(true);
   const { focos } = useFirms();
 
   const capa = CAPAS.find((c) => c.id === capaId)!;
@@ -216,15 +232,35 @@ export default function Imagenes() {
 
         <section className="relative h-[70vh] lg:h-auto lg:flex-1 order-1 lg:order-2" aria-label="Mapa con la imagen satelital elegida">
           <Globo centro={[-69, -38.25]} zoom={6.6} onListo={(m) => { mapRef.current = m; setListo(true); }} />
-          <div className="absolute left-4 top-4 right-4 sm:right-auto instrumento px-4 py-3 max-w-md">
-            <p className="font-medium">{info ?? capa.nombre}</p>
+          <details open={leyendaAbierta} onToggle={(e) => setLeyendaAbierta((e.target as HTMLDetailsElement).open)}
+            className="absolute left-4 top-4 right-4 sm:right-auto instrumento px-4 py-3 max-w-md">
+            <summary className="font-medium cursor-pointer list-none flex items-start justify-between gap-3">
+              <span>{info ?? capa.nombre}</span>
+              <span className="text-xs text-hielo shrink-0 mt-0.5">{leyendaAbierta ? "Ocultar leyenda" : "Ver leyenda"}</span>
+            </summary>
+            {capa.categorias && (
+              <ul className="mt-2 space-y-1">
+                {capa.categorias.map((c) => (
+                  <li key={c.texto} className="flex items-start gap-2 text-xs">
+                    <span className="mt-0.5 w-3 h-3 shrink-0 border border-white/20" style={{ background: c.color }} />
+                    <span className="text-texto/90">{c.texto}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {verFocos && (
+              <p className="flex items-center gap-2 text-xs mt-2">
+                <span className="w-3 h-3 shrink-0 rounded-full border-2" style={{ borderColor: "#FF8A3D" }} />
+                Foco térmico detectado por NASA FIRMS (últimas 48 h)
+              </p>
+            )}
             {capa.leyenda && (
               <div className="mt-2">
                 <div className="h-2.5 w-full" style={{ background: capa.leyenda.colores }} />
                 <div className="flex justify-between num text-[11px] text-tenue mt-1"><span>{capa.leyenda.min}</span><span>{capa.leyenda.max}</span></div>
               </div>
             )}
-          </div>
+          </details>
           {imagenUrl && (
             <a href={imagenUrl} download={`vaca-muerta-${capaId}.png`} className="absolute right-4 bottom-10 flex items-center gap-1.5 px-3 py-1.5 text-xs border border-linea bg-noche/85 text-hielo hover:border-hielo">
               <Download className="w-3.5 h-3.5" /> Descargar PNG
