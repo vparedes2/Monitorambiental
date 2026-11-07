@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useInyeccion, leerIny, type InyPozo, type InyDatos } from "../lib/inyeccion";
 import type { Map as MLMap } from "maplibre-gl";
 import { motion, AnimatePresence } from "motion/react";
 import { FileDown, Search, X } from "lucide-react";
@@ -49,7 +50,7 @@ const LEYENDA: ItemLeyenda[] = [
   { color: "#C9A46A", texto: "Ducto troncal", forma: "linea" }
 ];
 
-type Seleccion = { tipo: string; titulo: string; datos: [string, string | number | null | undefined][]; lat: number; lon: number };
+type Seleccion = { tipo: string; titulo: string; datos: [string, string | number | null | undefined][]; lat: number; lon: number; idNacion?: string | null };
 
 export default function Instalaciones() {
   const sig = useSigNeuquen();
@@ -60,6 +61,7 @@ export default function Instalaciones() {
   const [estadoFirms, setEstadoFirms] = useState<string>("cargando");
   const [vis, setVis] = useState(visInicial);
   const [sel, setSel] = useState<Seleccion | null>(null);
+  const iny = useInyeccion();
   const [busqueda, setBusqueda] = useState("");
   const [operador, setOperador] = useState("todas");
   const [filtroVent, setFiltroVent] = useState<"todos" | "detectado" | "sin" | "vencido">("todos");
@@ -147,7 +149,7 @@ export default function Instalaciones() {
       ["Empresa", p.empresa], ["Área", p.area], ["Motivo", p.motivo], ["Autorizado (m³/día)", p.m3_dia_autorizado], ["Disposición", p.disposicion],
       ["Expediente", p.expediente], ["Vigencia", `${p.inicio ?? "?"} al ${p.vencimiento ?? "?"}`], ["Detecciones en la ventana", p.detecciones]
     ] }));
-    clic("x-sum", (p, c) => ({ tipo: "Pozo sumidero", titulo: p.nombre || "Sumidero", lat: c[1], lon: c[0], datos: [
+    clic("x-sum", (p, c) => ({ tipo: "Pozo sumidero", titulo: p.nombre || "Sumidero", lat: c[1], lon: c[0], idNacion: p.id_nacion != null ? String(p.id_nacion) : null, datos: [
       ["Operadora", p.operador], ["Operadora original", p.operador_original !== p.operador ? p.operador_original : null], ["Área", p.area], ["Yacimiento", p.yacimiento],
       ["Estado", p.estado], ["Abandono", p.abandono], ["Formación", p.formacion], ["Profundidad medida (m)", p.profundidad_m],
       ["Perforación", p.inicio_perf ? `${p.inicio_perf}${p.fin_perf ? ` al ${p.fin_perf}` : ""}` : p.anio],
@@ -247,7 +249,7 @@ export default function Instalaciones() {
         {/* Ficha */}
         <AnimatePresence>
           {sel && (
-            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute right-4 bottom-10 w-[320px] max-w-[calc(100%-2rem)] instrumento p-4 z-10">
+            <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute right-4 bottom-10 w-[320px] max-w-[calc(100%-2rem)] max-h-[calc(100%-5rem)] overflow-y-auto instrumento p-4 z-10">
               <div className="flex justify-between gap-2">
                 <div>
                   <p className="titulo text-xl font-semibold leading-tight">{sel.titulo}</p>
@@ -260,6 +262,7 @@ export default function Instalaciones() {
                   <div key={k} className="flex justify-between gap-3"><dt className="text-tenue shrink-0">{k}</dt><dd className="text-right">{typeof v === "number" ? v.toLocaleString("es-AR") : v}</dd></div>
                 ))}
               </dl>
+              {sel.idNacion && iny && <FichaInyeccion p={iny.pozos[sel.idNacion]} datos={iny} />}
               <div className="mt-3 flex gap-2 text-xs">
                 <button onClick={() => ir(sel.lat, sel.lon)} className="flex-1 px-2 py-1.5 border border-linea text-hielo hover:border-hielo">Acercar</button>
                 <a className="flex-1 text-center px-2 py-1.5 border border-linea text-hielo hover:border-hielo" target="_blank" rel="noopener" href={`https://earth.google.com/web/@${sel.lat},${sel.lon},0a,1200d,35y,0h,45t,0r`}>Google Earth ↗</a>
@@ -356,6 +359,35 @@ export default function Instalaciones() {
           <p className="text-[11px] text-tenue mt-4">Fuente: <a className="text-hielo hover:underline" href={URL_SIG_NQN} target="_blank" rel="noopener">{FUENTE_NQN}</a>. Tolerancia de asociación {TOLERANCIA_M} m.</p>
         </div>
       </aside>
+    </div>
+  );
+}
+
+/** Inyección declarada a Nación: barras por mes y lectura de coherencia */
+function FichaInyeccion({ p, datos }: { p?: InyPozo; datos: InyDatos }) {
+  if (!p) return <p className="mt-3 text-[11px] text-tenue">Sin declaraciones de inyección en {datos.desde.slice(0, 4)} en el registro nacional.</p>;
+  const l = leerIny(p, datos);
+  const max = Math.max(1, ...p.m3.map((v) => v ?? 0));
+  const color = l.aviso === "activo_sin" || l.aviso === "dejo" ? "text-aviso" : "text-tenue";
+  return (
+    <div className="mt-3 border-t border-linea pt-3">
+      <p className="text-xs font-medium">Inyección declarada a Nación</p>
+      <div className="mt-2 flex items-end gap-[3px] h-10" aria-label="Metros cúbicos inyectados por mes">
+        {p.m3.map((v, i) => (
+          <div key={i} className="flex-1 flex flex-col items-center gap-0.5" title={`${l.nombreMes(i)}: ${v === null ? "sin declaración" : `${v.toLocaleString("es-AR")} m³`}`}>
+            <div className="w-full bg-agua/70" style={{ height: `${Math.max(v ? 2 : 0, ((v ?? 0) / max) * 32)}px` }} />
+            <span className="text-[9px] text-tenue leading-none">{l.nombreMes(i)[0]}</span>
+          </div>
+        ))}
+      </div>
+      <dl className="mt-2 space-y-1 text-xs">
+        <div className="flex justify-between gap-3"><dt className="text-tenue">Último mes con inyección</dt><dd>{l.ultimoMes ?? "Ninguno en el año"}</dd></div>
+        {l.ultimoMes && <div className="flex justify-between gap-3"><dt className="text-tenue">Ese mes, por día</dt><dd className="num">{l.ultimoDia.toLocaleString("es-AR")} m³/d</dd></div>}
+        <div className="flex justify-between gap-3"><dt className="text-tenue">Total {datos.desde.slice(0, 4)}</dt><dd className="num">{l.total.toLocaleString("es-AR")} m³</dd></div>
+        <div className="flex justify-between gap-3"><dt className="text-tenue">Estado declarado</dt><dd className="text-right">{p.estado}</dd></div>
+      </dl>
+      <p className={`mt-2 text-[11px] leading-snug ${color}`}>{l.texto}</p>
+      <p className="mt-1 text-[10px] text-tenue">Capítulo IV, Secretaría de Energía. Datos hasta {l.nombreMes(p.m3.length - 1)}.</p>
     </div>
   );
 }
