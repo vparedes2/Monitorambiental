@@ -1,6 +1,8 @@
 import React, { Suspense, lazy, useEffect, useState } from "react";
 import { Globe2, Orbit, Flame, Images, FlaskConical, Droplets, Factory } from "lucide-react";
 import { motion } from "motion/react";
+import { useTema } from "./lib/tema";
+import { Sun, Moon } from "lucide-react";
 import { LogoMarca } from "./components/Logo";
 
 const CentroMando = lazy(() => import("./screens/CentroMando"));
@@ -62,6 +64,7 @@ function Cargando() {
 
 export default function App() {
   const [ruta, setRuta] = useState<Ruta>(leerRuta);
+  const { tema, alternar } = useTema();
 
   useEffect(() => {
     const r = RUTAS.find((x) => x.id === ruta);
@@ -96,8 +99,13 @@ export default function App() {
             </a>
           );
         })}
+        <button onClick={alternar} className="mt-auto mb-3 w-[72px] py-2 flex flex-col items-center gap-1 text-[11px] text-tenue hover:text-texto"
+          aria-label={tema === "dia" ? "Cambiar a tema de noche (Lutita)" : "Cambiar a tema de día (Carta de campo)"}>
+          {tema === "dia" ? <Moon className="w-5 h-5" strokeWidth={1.6} /> : <Sun className="w-5 h-5" strokeWidth={1.6} />}
+          {tema === "dia" ? "Noche" : "Día"}
+        </button>
         <a href="https://victorparedes.ar" target="_blank" rel="noopener" title="Desarrollado por Lic. Víctor Paredes"
-          className="mt-auto text-[10px] text-tenue hover:text-lutita text-center leading-tight px-2">
+          className=" text-[10px] text-tenue hover:text-lutita text-center leading-tight px-2">
           por<br />Lic. Víctor<br />Paredes
         </a>
       </nav>

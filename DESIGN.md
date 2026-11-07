@@ -2,18 +2,23 @@
 
 Mundo: **sala de telemetría**. Pantallas de trabajo (modo Operate): precisión y calma, la marca vive en los detalles.
 
-## Color (tokens en `src/index.css`, `@theme`)
-| Token | Valor | Uso |
-| --- | --- | --- |
-| noche | #0A1628 | Fondo |
-| panel | #0F2035 | Paneles e instrumentos |
-| linea | #22405E | Bordes y divisores |
-| hielo | #8FE3F0 | Acción principal, selección, foco |
-| llama | #FF8A3D | Calor, focos FIRMS, alertas |
-| lutita | #C9A46A | Estratos, instalaciones, acciones secundarias |
-| texto / tenue | #E8EEF4 / #8BA0B6 | Texto principal / secundario |
+## Color: dos temas propios (tokens en `src/index.css`)
+La consola sigue al tema del teléfono (`auto`) y se puede cambiar a mano (riel lateral o menú del mapa). **Las ventanas de mapa son siempre Lutita** (`.tema-noche`): las capas de datos están pensadas sobre imagen satelital.
 
-Estados del cruce con el registro provincial: verde #7BD88F vigente, ámbar #FFC857 permiso vencido, naranja #FF8A3D sin permiso registrado, rojo #FF4D6D lejos de instalaciones, gris #8BA0B6 fuera de Neuquén.
+| Token | Lutita (noche) | Carta de campo (día) | Rol |
+| --- | --- | --- | --- |
+| noche | #12100E | #F1ECE2 | Fondo |
+| panel | #1C1915 | #FBF8F2 | Consola |
+| linea | #3A332B | #D6CCBB | Bordes |
+| hielo | #E6C27A arena | #8C5A12 ocre | Acción principal, selección, foco |
+| llama | #FF7A33 | #B8430F | Calor, focos, alertas |
+| lutita | #A9B79C jarilla | #4F6146 | Secundario |
+| texto / tenue | #EEE7DB / #A89C8C | #1E1A15 / #665B4F | Texto |
+| agua | #7FCBD6 | #1E6A78 | Solo datos de agua y satélites ópticos |
+
+Fondos: estratos horizontales irregulares (laminación de la lutita) de noche; curvas de nivel sobre papel de día (`public/curvas-nivel.svg`). El cian queda reservado a datos, nunca como color de marca.
+
+Estados del cruce con el registro provincial (sobre el mapa): verde #7BD88F vigente, ámbar #FFC857 permiso vencido, naranja #FF8A3D sin permiso registrado, rojo #FF4D6D lejos de instalaciones, gris #8BA0B6 fuera de Neuquén. En la consola de día se usan `ok` y `aviso`, más oscuros.
 
 ## Tipografía (autoalojada con @fontsource)
 - Saira Condensed 500/600: títulos (`.titulo`).
@@ -29,7 +34,7 @@ Estados del cruce con el registro provincial: verde #7BD88F vigente, ámbar #FFC
 - Hover con transformaciones solo con puntero fino. Con movimiento reducido: sin desplazamientos, se mantienen los cambios de color y opacidad.
 
 ## Firma
-- Paneles `.instrumento` con esquinas de registro en hielo.
+- Paneles `.instrumento` con esquinas de registro en el color de acento.
 - Lectura de coordenadas bajo el cursor en todos los mapas (clic para copiar `lat, lon`).
 - Selección de texto en llama, scrollbars finas en línea, foco con anillo hielo que se asienta.
 

@@ -250,7 +250,7 @@ export default function Imagenes() {
           </div>
         </aside>
 
-        <section className="relative h-[70vh] lg:h-auto lg:flex-1 order-1 lg:order-2" aria-label="Mapa con la imagen satelital elegida">
+        <section className="tema-noche bg-noche relative h-[70vh] lg:h-auto lg:flex-1 order-1 lg:order-2" aria-label="Mapa con la imagen satelital elegida">
           <Globo centro={[-69, -38.25]} zoom={6.6} onListo={(m) => { mapRef.current = m; setListo(true); }}
             tituloExport={capa.nombre}
             subtituloExport={info ?? `${capa.satelite}, ${capa.resolucion}`}

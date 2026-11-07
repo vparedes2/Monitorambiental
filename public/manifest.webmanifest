@@ -4,8 +4,8 @@
   "description": "Focos térmicos, órbitas, imágenes Copernicus y análisis de suelo, agua y derrames en la Cuenca Neuquina.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#0A1628",
-  "theme_color": "#0A1628",
+  "background_color": "#12100E",
+  "theme_color": "#12100E",
   "lang": "es-AR",
   "icons": [
     { "src": "/icon-192.png", "sizes": "192x192", "type": "image/png" },

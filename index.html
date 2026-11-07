@@ -6,7 +6,18 @@
     <title>Vaca Muerta · Monitor ambiental satelital</title>
     <meta name="description" content="Monitoreo satelital de la Cuenca Neuquina: focos térmicos de NASA FIRMS, órbitas en vivo, imágenes Copernicus y análisis de suelo, agua y derrames de hidrocarburo. Desarrollado por Lic. Víctor Paredes." />
     <meta name="author" content="Lic. Víctor Paredes" />
-    <meta name="theme-color" content="#0A1628" />
+    <meta name="theme-color" content="#12100E" />
+    <script>
+      // Tema antes de pintar: evita el parpadeo entre Carta de campo y Lutita
+      (function () {
+        try {
+          var p = localStorage.getItem("tema-monitor") || "auto";
+          var t = p === "auto" ? (matchMedia("(prefers-color-scheme: light)").matches ? "dia" : "noche") : p;
+          document.documentElement.dataset.tema = t;
+          if (t === "dia") document.querySelector('meta[name="theme-color"]').setAttribute("content", "#F1ECE2");
+        } catch (e) { document.documentElement.dataset.tema = "noche"; }
+      })();
+    </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="apple-touch-icon" href="/icon-180.png" />
     <link rel="manifest" href="/manifest.webmanifest" />

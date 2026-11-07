@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Layers } from "lucide-react";
+import { useTema } from "../lib/tema";
 import { capturarMapa, componerLamina, descargarCanvas, nombreArchivo, type ItemLeyenda } from "../lib/exportar";
 import maplibregl, { Map as MLMap } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -77,9 +78,9 @@ const ESTILO: maplibregl.StyleSpecification = {
   version: 8,
   projection: { type: "globe" },
   sky: {
-    "sky-color": "#0A1628",
+    "sky-color": "#12100E",
     "horizon-color": "#1d4a6b",
-    "fog-color": "#0A1628",
+    "fog-color": "#12100E",
     "sky-horizon-blend": 0.6,
     "horizon-fog-blend": 0.5,
     "fog-ground-blend": 0.9,
@@ -102,7 +103,7 @@ const ESTILO: maplibregl.StyleSpecification = {
     }
   },
   layers: [
-    { id: "fondo", type: "background", paint: { "background-color": "#0A1628" } },
+    { id: "fondo", type: "background", paint: { "background-color": "#12100E" } },
     { id: "satelite", type: "raster", source: "satelite", paint: { "raster-saturation": -0.15, "raster-contrast": 0.08 } },
     { id: "lugares", type: "raster", source: "lugares", paint: { "raster-opacity": 0.75 } }
   ]
@@ -126,6 +127,7 @@ interface Props {
 
 /** Globo terrestre con imágenes satelitales reales (MapLibre, proyección globo) */
 export default function Globo({ centro, zoom, interactivo = true, onListo, className, posicionSelector, lecturaArriba, tituloExport, subtituloExport, leyendaExport }: Props) {
+  const { tema, alternar: alternarTema } = useTema();
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const [baseId, setBaseId] = useState<string>(leerBase);
@@ -233,6 +235,12 @@ export default function Globo({ centro, zoom, interactivo = true, onListo, class
                 </li>
               ))}
               <li className="border-t border-linea mt-1 pt-1">
+                <button onClick={() => { alternarTema(); setAbierto(false); }} className="w-full text-left px-3 py-2 hover:bg-noche/50">
+                  <span className="block text-sm">{tema === "dia" ? "Consola de noche (Lutita)" : "Consola de día (Carta de campo)"}</span>
+                  <span className="block text-[11px] text-tenue leading-snug">El mapa queda igual; cambian los paneles. Por defecto sigue al teléfono.</span>
+                </button>
+              </li>
+              <li>
                 <button onClick={exportarPng} className="w-full text-left px-3 py-2 hover:bg-noche/50">
                   <span className="block text-sm text-lutita">Descargar este mapa (PNG)</span>
                   <span className="block text-[11px] text-tenue leading-snug">Lámina con título, leyenda, fecha y firma.</span>
@@ -324,7 +332,7 @@ function LecturaCursor({ mapRef, arriba }: { mapRef: React.MutableRefObject<MLMa
       <span className="text-tenue">z <span ref={zoom}>—</span></span>
       <span className={`lectura-accion ${copiado ? "copiado" : ""}`}>
         <span className="lectura-copiar text-hielo">Copiar</span>
-        <span className="lectura-ok text-[#7BD88F]">Copiado</span>
+        <span className="lectura-ok text-ok">Copiado</span>
       </span>
     </button>
   );

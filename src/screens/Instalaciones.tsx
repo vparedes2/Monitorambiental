@@ -13,7 +13,7 @@ interface Foco { id: string; lat: number; lon: number; frp: number; fecha: strin
 
 const CAPAS = [
   { id: "focos", nombre: "Focos FIRMS (cruce)", color: "#FF8A3D" },
-  { id: "instalaciones", nombre: "Instalaciones", color: "#E8EEF4" },
+  { id: "instalaciones", nombre: "Instalaciones", color: "#EEE7DB" },
   { id: "venteos", nombre: "Venteos autorizados", color: "#7BD88F" },
   { id: "sumideros", nombre: "Pozos sumideros", color: "#5AA9FF" },
   { id: "ductos", nombre: "Ductos troncales", color: "#C9A46A" },
@@ -118,17 +118,17 @@ export default function Instalaciones() {
     const vacio: any = { type: "FeatureCollection", features: [] };
     for (const id of ["areas", "ductos", "traza", "sumideros", "inst", "vent", "focosx"]) setGeo(map, id, vacio);
     map.addLayer({ id: "x-areas-linea", type: "line", source: "areas", paint: { "line-color": "#8FE3F0", "line-opacity": 0.45, "line-width": 1 } });
-    map.addLayer({ id: "x-areas-rotulo", type: "symbol", source: "areas", minzoom: 8.5, layout: { "text-field": ["get", "nombre"], "text-size": 10, "text-font": ["Open Sans Regular"] }, paint: { "text-color": "#8FE3F0", "text-halo-color": "#0A1628", "text-halo-width": 1.2 } });
-    map.addLayer({ id: "x-ductos", type: "line", source: "ductos", paint: { "line-color": ["case", ["==", ["get", "fluido"], "Gas"], "#C9A46A", "#E8EEF4"], "line-width": 1.6, "line-opacity": 0.8 } });
+    map.addLayer({ id: "x-areas-rotulo", type: "symbol", source: "areas", minzoom: 8.5, layout: { "text-field": ["get", "nombre"], "text-size": 10, "text-font": ["Open Sans Regular"] }, paint: { "text-color": "#8FE3F0", "text-halo-color": "#12100E", "text-halo-width": 1.2 } });
+    map.addLayer({ id: "x-ductos", type: "line", source: "ductos", paint: { "line-color": ["case", ["==", ["get", "fluido"], "Gas"], "#C9A46A", "#EEE7DB"], "line-width": 1.6, "line-opacity": 0.8 } });
     map.addLayer({ id: "x-traza", type: "line", source: "traza", paint: { "line-color": "#FF4D6D", "line-width": 3, "line-dasharray": [2, 1] } });
-    map.addLayer({ id: "x-sum", type: "circle", source: "sumideros", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 2.5, 12, 6], "circle-color": "#5AA9FF", "circle-stroke-color": "#0A1628", "circle-stroke-width": 1 } });
-    map.addLayer({ id: "x-inst", type: "circle", source: "inst", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 2.5, 12, 7], "circle-color": ["get", "color"], "circle-opacity": 0.9, "circle-stroke-color": "#0A1628", "circle-stroke-width": 1.2 } });
+    map.addLayer({ id: "x-sum", type: "circle", source: "sumideros", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 2.5, 12, 6], "circle-color": "#5AA9FF", "circle-stroke-color": "#12100E", "circle-stroke-width": 1 } });
+    map.addLayer({ id: "x-inst", type: "circle", source: "inst", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 2.5, 12, 7], "circle-color": ["get", "color"], "circle-opacity": 0.9, "circle-stroke-color": "#12100E", "circle-stroke-width": 1.2 } });
     map.addLayer({ id: "x-vent", type: "circle", source: "vent", paint: {
       "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 6, 12, 14], "circle-color": "rgba(0,0,0,0)",
       "circle-stroke-color": ["case", ["get", "vig"], "#7BD88F", "#FFC857"], "circle-stroke-width": 2
     } });
     map.addLayer({ id: "x-focos-halo", type: "circle", source: "focosx", paint: { "circle-color": ["get", "color"], "circle-opacity": 0.3, "circle-blur": 0.8, "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 6, 12, ["+", 14, ["*", 2, ["get", "frp"]]]] } });
-    map.addLayer({ id: "x-focos", type: "circle", source: "focosx", paint: { "circle-color": ["get", "color"], "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 3, 12, 6], "circle-stroke-color": "#0A1628", "circle-stroke-width": 1 } });
+    map.addLayer({ id: "x-focos", type: "circle", source: "focosx", paint: { "circle-color": ["get", "color"], "circle-radius": ["interpolate", ["linear"], ["zoom"], 6, 3, 12, 6], "circle-stroke-color": "#12100E", "circle-stroke-width": 1 } });
     const clic = (id: string, fn: (p: any, c: [number, number]) => Seleccion) => {
       map.on("click", id, (e: any) => {
         const ft = e.features?.[0];
@@ -215,7 +215,7 @@ export default function Instalaciones() {
 
   return (
     <div className="flex flex-col lg:flex-row lg:h-screen">
-      <section className="relative h-[64vh] lg:h-auto lg:flex-1" aria-label="Mapa de instalaciones hidrocarburíferas de Neuquén">
+      <section className="tema-noche bg-noche relative h-[64vh] lg:h-auto lg:flex-1" aria-label="Mapa de instalaciones hidrocarburíferas de Neuquén">
         <Globo centro={[-68.85, -38.3]} zoom={8} onListo={alListo} posicionSelector="left-4 bottom-10"
           tituloExport="Instalaciones declaradas y focos térmicos" subtituloExport={`Registro provincial de Neuquén + NASA FIRMS (${dias} días)`} leyendaExport={LEYENDA} />
         <div className="absolute left-4 top-4 sm:left-6 sm:top-6 max-w-md pointer-events-none">
@@ -302,7 +302,7 @@ export default function Instalaciones() {
             {CAPAS.map((c) => (
               <button key={c.id} onClick={() => setVis((v) => ({ ...v, [c.id]: !v[c.id] }))} aria-pressed={vis[c.id]}
                 className={`flex items-center gap-1.5 px-2 py-1 text-xs border ${vis[c.id] ? "border-hielo text-texto" : "border-linea text-tenue"}`}>
-                <span className="w-2 h-2 rounded-full" style={{ background: c.color, opacity: vis[c.id] ? 1 : 0.35 }} />{c.nombre}
+                <span className="w-2 h-2 rounded-full ring-1 ring-linea-fuerte" style={{ background: c.color, opacity: vis[c.id] ? 1 : 0.35 }} />{c.nombre}
               </button>
             ))}
           </div>
@@ -339,12 +339,12 @@ export default function Instalaciones() {
                     ["Disposición", v.venteo.disposicion], ["Vigencia", `${v.venteo.inicio ?? "?"} al ${v.venteo.vencimiento ?? "?"}`],
                     ["Detecciones (ventana)", v.detecciones], ["FRP máximo (MW)", v.frpMax ? v.frpMax.toFixed(1) : null], ["Última detección", v.ultima]
                   ] })}>
-                  <span className="mt-1 w-2.5 h-2.5 rounded-full border-2 shrink-0" style={{ borderColor: !v.vigente ? "#FFC857" : v.detecciones ? "#7BD88F" : "#8BA0B6", background: v.detecciones ? "#7BD88F" : "transparent" }} />
+                  <span className="mt-1 w-2.5 h-2.5 rounded-full border-2 shrink-0" style={{ borderColor: !v.vigente ? "var(--color-aviso)" : v.detecciones ? "var(--color-ok)" : "var(--color-tenue)", background: v.detecciones ? "var(--color-ok)" : "transparent" }} />
                   <span className="flex-1 min-w-0">
                     <span className="block text-sm truncate">{v.venteo.instalacion}</span>
                     <span className="block text-[11px] text-tenue truncate">{v.venteo.empresa} · {v.venteo.area} · {v.venteo.m3_dia_autorizado?.toLocaleString("es-AR") ?? "?"} m³/d</span>
                   </span>
-                  <span className="num text-xs text-right shrink-0">{!v.vigente ? <span className="text-[#FFC857]">vencido</span> : v.detecciones ? <span className="text-[#7BD88F]">{v.detecciones} det.</span> : <span className="text-tenue">sin det.</span>}</span>
+                  <span className="num text-xs text-right shrink-0">{!v.vigente ? <span className="text-aviso">vencido</span> : v.detecciones ? <span className="text-ok">{v.detecciones} det.</span> : <span className="text-tenue">sin det.</span>}</span>
                 </button>
               </li>
             ))}

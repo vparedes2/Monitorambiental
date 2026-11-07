@@ -7,14 +7,43 @@
   --font-cond: "Saira Condensed", "Arial Narrow", sans-serif;
   --font-plex: "IBM Plex Sans", ui-sans-serif, sans-serif;
   --font-plexmono: "IBM Plex Mono", ui-monospace, monospace;
-  --color-noche: #0A1628;
-  --color-panel: #0F2035;
-  --color-linea: #22405E;
-  --color-hielo: #8FE3F0;
-  --color-llama: #FF8A3D;
-  --color-lutita: #C9A46A;
-  --color-texto: #E8EEF4;
-  --color-tenue: #8BA0B6;
+  /* Lutita (noche): negro cálido de roca generadora. Los nombres de token se conservan; el rol importa, no el nombre. */
+  --color-noche: #12100E;      /* fondo */
+  --color-panel: #1C1915;      /* consola */
+  --color-linea: #3A332B;      /* bordes */
+  --color-linea-fuerte: #574C40;
+  --color-hielo: #E6C27A;      /* acento de acción y selección: arena */
+  --color-llama: #FF7A33;      /* calor, focos, alertas */
+  --color-lutita: #A9B79C;     /* secundario: jarilla de la estepa */
+  --color-texto: #EEE7DB;
+  --color-tenue: #A89C8C;
+  --color-agua: #7FCBD6;       /* solo para datos de agua y satélites ópticos */
+  --color-ok: #7BD88F;
+  --color-aviso: #FFC857;
+}
+
+/* Carta de campo (día): papel de carta topográfica, tinta y ocre. Se usa por defecto con el sistema en claro. */
+:root[data-tema="dia"] {
+  --color-noche: #F1ECE2;
+  --color-panel: #FBF8F2;
+  --color-linea: #D6CCBB;
+  --color-linea-fuerte: #B5A893;
+  --color-hielo: #8C5A12;
+  --color-llama: #B8430F;
+  --color-lutita: #4F6146;
+  --color-texto: #1E1A15;
+  --color-tenue: #665B4F;
+  --color-agua: #1E6A78;
+  --color-ok: #2E7A3B;
+  --color-aviso: #8A6100;
+  color-scheme: light;
+}
+/* Ventanas de mapa: siempre en lutita (las capas de datos están pensadas sobre imagen satelital) */
+.tema-noche, :root[data-tema="dia"] .tema-noche {
+  --color-noche: #12100E; --color-panel: #1C1915; --color-linea: #3A332B; --color-linea-fuerte: #574C40;
+  --color-hielo: #E6C27A; --color-llama: #FF7A33; --color-lutita: #A9B79C; --color-texto: #EEE7DB; --color-tenue: #A89C8C;
+  --color-agua: #7FCBD6; --color-ok: #7BD88F; --color-aviso: #FFC857;
+  color: var(--color-texto); color-scheme: dark;
 }
 
 @layer base {
@@ -27,25 +56,26 @@
     --t-hover: 160ms;
     --t-panel: 220ms;
     color-scheme: dark;
-    accent-color: #8FE3F0;
-    caret-color: #8FE3F0;
+    accent-color: var(--color-hielo);
+    caret-color: var(--color-hielo);
   }
   body {
-    background-color: #0A1628;
+    background-color: var(--color-noche);
+    color: var(--color-texto);
     font-family: var(--font-sans);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
   }
   h1, h2, h3 { text-wrap: balance; }
   p { text-wrap: pretty; }
-  ::selection { background: rgba(255, 138, 61, 0.38); color: #FFF4EA; }
-  * { scrollbar-width: thin; scrollbar-color: #2C4F72 transparent; }
+  ::selection { background: color-mix(in oklab, var(--color-llama) 34%, transparent); color: var(--color-texto); }
+  * { scrollbar-width: thin; scrollbar-color: var(--color-linea-fuerte) transparent; }
   ::-webkit-scrollbar { width: 8px; height: 8px; }
   ::-webkit-scrollbar-track { background: transparent; }
-  ::-webkit-scrollbar-thumb { background: #22405E; border-radius: 0; border: 2px solid #0A1628; }
-  ::-webkit-scrollbar-thumb:hover { background: #2C4F72; }
+  ::-webkit-scrollbar-thumb { background: var(--color-linea); border-radius: 0; border: 2px solid var(--color-noche); }
+  ::-webkit-scrollbar-thumb:hover { background: var(--color-linea-fuerte); }
   a { text-underline-offset: 3px; text-decoration-thickness: 1px; }
-  input::placeholder { color: #7F95AC; }
+  input::placeholder { color: var(--color-tenue); }
   /* Presión: todo lo que se toca responde (los marcadores del mapa quedan fuera: MapLibre los posiciona con transform) */
   :where(button, a[href], [role="button"], summary):not(.maplibregl-marker, :disabled) {
     transition-property: transform, color, background-color, border-color, opacity;
@@ -60,12 +90,21 @@
 @layer components {
 /* ---------- Sala de telemetría ---------- */
 .sala {
+  /* Lutita: estratos horizontales a distancias irregulares, como la laminación de la roca generadora */
   background:
-    radial-gradient(1200px 600px at 75% -10%, rgba(143, 227, 240, 0.06), transparent 60%),
-    linear-gradient(rgba(34, 64, 94, 0.18) 1px, transparent 1px) 0 0 / 100% 48px,
-    #0A1628;
-  color: #E8EEF4;
+    repeating-linear-gradient(180deg, transparent 0 36px, color-mix(in oklab, var(--color-linea) 30%, transparent) 36px 37px),
+    repeating-linear-gradient(180deg, transparent 0 89px, color-mix(in oklab, var(--color-linea) 45%, transparent) 89px 90px),
+    repeating-linear-gradient(180deg, transparent 0 233px, color-mix(in oklab, var(--color-hielo) 10%, transparent) 233px 235px),
+    var(--color-noche);
+  color: var(--color-texto);
   font-family: var(--font-plex);
+}
+/* Carta de campo: curvas de nivel sobre papel */
+:root[data-tema="dia"] .sala {
+  background:
+    url("/curvas-nivel.svg") center top / 1800px auto repeat,
+    radial-gradient(1400px 700px at 20% 0%, #F7F3EA, transparent 70%),
+    var(--color-noche);
 }
 .num { font-family: var(--font-plexmono); font-variant-numeric: tabular-nums; }
 .titulo { font-family: var(--font-cond); letter-spacing: 0.01em; }
@@ -73,21 +112,21 @@
 /* Panel con esquinas de instrumento */
 .instrumento {
   position: relative;
-  background: rgba(15, 32, 53, 0.78);
-  border: 1px solid rgba(34, 64, 94, 0.9);
+  background: color-mix(in oklab, var(--color-panel) 78%, transparent);
+  border: 1px solid color-mix(in oklab, var(--color-linea) 90%, transparent);
   backdrop-filter: blur(10px);
 }
 .instrumento::before, .instrumento::after {
   content: ""; position: absolute; width: 10px; height: 10px; pointer-events: none;
-  border-color: #8FE3F0; opacity: .7;
+  border-color: var(--color-hielo); opacity: .7;
 }
 .instrumento::before { top: -1px; left: -1px; border-top: 2px solid; border-left: 2px solid; }
 .instrumento::after { bottom: -1px; right: -1px; border-bottom: 2px solid; border-right: 2px solid; }
 
 }
 
-.maplibregl-ctrl-attrib { font-size: 10px; background: rgba(10,22,40,.7) !important; color: #8BA0B6; }
-.maplibregl-ctrl-attrib a { color: #8BA0B6; }
+.maplibregl-ctrl-attrib { font-size: 10px; background: color-mix(in oklab, var(--color-noche) 70%, transparent) !important; color: var(--color-tenue); }
+.maplibregl-ctrl-attrib a { color: var(--color-tenue); }
 
 @keyframes barrido { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 .radar-barrido { animation: barrido 6s linear infinite; transform-origin: 50% 50%; }
@@ -98,30 +137,50 @@
   :focus-visible { animation: none; }
 }
 
-:focus-visible { outline: 2px solid #8FE3F0; outline-offset: 2px; animation: foco-asentar 200ms var(--ease-out); }
+:focus-visible { outline: 2px solid var(--color-hielo); outline-offset: 2px; animation: foco-asentar 200ms var(--ease-out); }
 @keyframes foco-asentar { from { outline-offset: 6px; } to { outline-offset: 2px; } }
 
 /* Re-tema de los módulos anteriores con la paleta de la sala */
 .legado {
-  --color-slate-950: #0A1628;
-  --color-slate-900: #0F2035;
-  --color-slate-850: #132840;
-  --color-slate-800: #22405E;
-  --color-slate-700: #2C4F72;
-  --color-slate-400: #8BA0B6;
-  --color-slate-300: #B5C4D3;
-  --color-slate-200: #D6E0EA;
-  --color-slate-100: #E8EEF4;
-  --color-teal-300: #8FE3F0;
-  --color-teal-400: #8FE3F0;
-  --color-teal-500: #5FC3D6;
-  --color-cyan-300: #8FE3F0;
-  --color-cyan-400: #8FE3F0;
-  --color-cyan-500: #5FC3D6;
-  --color-amber-300: #FFB27A;
-  --color-amber-400: #FF8A3D;
-  --color-amber-500: #FF8A3D;
-  --color-orange-500: #FF8A3D;
+  --color-slate-950: var(--color-noche);
+  --color-slate-900: var(--color-panel);
+  --color-slate-850: color-mix(in oklab, var(--color-panel) 70%, var(--color-linea));
+  --color-slate-800: var(--color-linea);
+  --color-slate-700: var(--color-linea-fuerte);
+  --color-slate-400: var(--color-tenue);
+  --color-slate-300: color-mix(in oklab, var(--color-texto) 80%, var(--color-tenue));
+  --color-slate-200: color-mix(in oklab, var(--color-texto) 90%, var(--color-tenue));
+  --color-slate-100: var(--color-texto);
+  --color-teal-300: var(--color-hielo);
+  --color-teal-400: var(--color-hielo);
+  --color-teal-500: var(--color-hielo);
+  --color-cyan-300: var(--color-hielo);
+  --color-cyan-400: var(--color-hielo);
+  --color-cyan-500: var(--color-hielo);
+  --color-amber-300: var(--color-llama);
+  --color-amber-400: var(--color-llama);
+  --color-amber-500: var(--color-llama);
+  --color-orange-500: var(--color-llama);
+  --color-slate-500: var(--color-tenue);
+  --color-slate-600: var(--color-linea-fuerte);
+  --color-sky-300: var(--color-agua);
+  --color-sky-400: var(--color-agua);
+  --color-sky-500: var(--color-agua);
+  --color-emerald-300: var(--color-ok);
+  --color-emerald-400: var(--color-ok);
+  --color-emerald-500: var(--color-ok);
+  --color-red-300: var(--color-llama);
+  --color-red-400: var(--color-llama);
+  --color-amber-200: var(--color-llama);
+  --color-teal-200: var(--color-hielo);
+  --color-cyan-200: var(--color-hielo);
+  --color-sky-200: var(--color-agua);
+  --color-purple-300: var(--color-lutita);
+  --color-purple-400: var(--color-lutita);
+  --color-purple-500: var(--color-lutita);
+  --color-slate-50: var(--color-texto);
+  --color-red-500: var(--color-llama);
+  --color-white: var(--color-texto);
   --font-mono: "IBM Plex Mono", ui-monospace, monospace;
   --font-sans: "IBM Plex Sans", ui-sans-serif, sans-serif;
   font-family: var(--font-plex);
@@ -138,22 +197,22 @@
 .logo-animado .logo-satelite { opacity: 0; transform-box: fill-box; animation: aparecer .3s 1s forwards, latido 1.6s 1.3s ease-in-out infinite; }
 @keyframes trazo { to { stroke-dashoffset: 0; } }
 @keyframes aparecer { to { opacity: 1; } }
-@keyframes latido { 0%,100% { filter: drop-shadow(0 0 0 #FF8A3D); } 50% { filter: drop-shadow(0 0 4px #FF8A3D); } }
+@keyframes latido { 0%,100% { filter: drop-shadow(0 0 0 var(--color-llama)); } 50% { filter: drop-shadow(0 0 4px var(--color-llama)); } }
 .logo-hover svg { transition: transform 240ms var(--ease-out); }
 @media (hover: hover) and (pointer: fine) {
   .logo-hover:hover svg { transform: rotate(-8deg) scale(1.04); }
 }
 
 /* ---------- Controles de mapa (zoom, brújula) con la paleta de la sala ---------- */
-.maplibregl-ctrl-group { background: rgba(15,32,53,.9) !important; border: 1px solid #22405E; box-shadow: none !important; border-radius: 2px !important; }
+.maplibregl-ctrl-group { background: color-mix(in oklab, var(--color-panel) 90%, transparent) !important; border: 1px solid var(--color-linea); box-shadow: none !important; border-radius: 2px !important; }
 .maplibregl-ctrl-group button { width: 34px !important; height: 34px !important; }
-.maplibregl-ctrl-group button + button { border-top: 1px solid #22405E !important; }
-.maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: invert(86%) sepia(26%) saturate(470%) hue-rotate(150deg) brightness(102%); }
-.maplibregl-ctrl-group button:hover { background: rgba(143,227,240,.12) !important; }
+.maplibregl-ctrl-group button + button { border-top: 1px solid var(--color-linea) !important; }
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon { filter: invert(83%) sepia(38%) saturate(520%) hue-rotate(352deg) brightness(98%); }
+.maplibregl-ctrl-group button:hover { background: color-mix(in oklab, var(--color-hielo) 12%, transparent) !important; }
 
 /* Anillo de enfoque al hacer zoom sobre un punto */
 @keyframes enfoque { 0% { transform: translate(-50%,-50%) scale(2.4); opacity: 0; } 30% { opacity: 1; } 100% { transform: translate(-50%,-50%) scale(1); opacity: 0; } }
-.anillo-enfoque { position: absolute; left: 50%; top: 50%; width: 120px; height: 120px; border: 2px solid #8FE3F0; border-radius: 50%; pointer-events: none; animation: enfoque 1.3s ease-out forwards; box-shadow: 0 0 24px rgba(143,227,240,.5); }
+.anillo-enfoque { position: absolute; left: 50%; top: 50%; width: 120px; height: 120px; border: 2px solid var(--color-hielo); border-radius: 50%; pointer-events: none; animation: enfoque 1.3s ease-out forwards; box-shadow: 0 0 24px color-mix(in oklab, var(--color-hielo) 50%, transparent); }
 @media (prefers-reduced-motion: reduce) {
   .logo-animado .logo-planeta, .logo-animado .logo-orbita, .logo-animado .logo-estrato, .logo-animado .logo-satelite { animation: none; stroke-dashoffset: 0; opacity: 1; }
   .anillo-enfoque { display: none; }
@@ -172,7 +231,7 @@
 /* Firma: una línea de barrido recorre el borde superior, como un instrumento que refresca */
 .barrido-ruta {
   position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 60; pointer-events: none;
-  background: linear-gradient(90deg, transparent, #8FE3F0 70%, #FFFFFF);
+  background: linear-gradient(90deg, transparent, var(--color-hielo) 65%, var(--color-llama));
   clip-path: inset(0 100% 0 0);
   animation: barrido-ruta 520ms var(--ease-in-out) forwards;
 }
@@ -192,7 +251,7 @@
 .lectura-cursor.es-visible { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
 .lectura-cursor:active { transform: translate(-50%, 0) scale(0.97); }
 .lectura-reticula { position: relative; width: 11px; height: 11px; }
-.lectura-reticula::before, .lectura-reticula::after { content: ""; position: absolute; background: #8FE3F0; }
+.lectura-reticula::before, .lectura-reticula::after { content: ""; position: absolute; background: var(--color-hielo); }
 .lectura-reticula::before { left: 5px; top: 0; width: 1px; height: 11px; }
 .lectura-reticula::after { top: 5px; left: 0; height: 1px; width: 11px; }
 /* Cambio Copiar → Copiado: crossfade con desenfoque para que se lea como un solo objeto que cambia */
@@ -214,7 +273,7 @@
 .legado .font-black { font-weight: 600; }
 .legado .font-extrabold { font-weight: 600; }
 /* Sin degradados decorativos ni halos de color: superficies planas de la sala */
-.legado [class*="bg-gradient-to"] { background-image: none !important; background-color: rgba(143, 227, 240, 0.1); }
+.legado [class*="bg-gradient-to"] { background-image: none !important; background-color: color-mix(in oklab, var(--color-hielo) 10%, transparent); }
 .legado [class*="shadow-lg"], .legado [class*="shadow-xl"], .legado [class*="shadow-2xl"], .legado [class*="shadow-["] { box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.55) !important; }
 .legado .backdrop-blur-md, .legado .backdrop-blur-sm, .legado .backdrop-blur { backdrop-filter: none; }
 .legado .animate-bounce, .legado .animate-pulse { animation: none; }

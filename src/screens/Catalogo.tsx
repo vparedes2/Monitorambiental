@@ -56,11 +56,11 @@ export default function Catalogo() {
         <h3 className="titulo text-2xl font-semibold">Línea de tiempo de pasadas</h3>
         <p className="text-xs text-tenue">Cada barra es una pasada de Sentinel-2 (la altura indica nubosidad); los puntos ocres son pasadas de Sentinel-5P.</p>
         <svg viewBox="0 0 600 150" className="w-full mt-4" role="img" aria-label="Escenas Sentinel-2 por fecha y nubosidad">
-          <line x1="20" x2="590" y1="120" y2="120" stroke="#22405E" />
+          <line x1="20" x2="590" y1="120" y2="120" style={{ stroke: "var(--color-linea)" }} />
           {[0, 5, 10, 15, 20].map((d) => (
             <g key={d}>
-              <line x1={590 - (d / 20) * 570} x2={590 - (d / 20) * 570} y1="120" y2="124" stroke="#22405E" />
-              <text x={590 - (d / 20) * 570} y="138" fontSize="10" textAnchor="middle" fill="#8BA0B6" fontFamily="IBM Plex Mono">{d === 0 ? "hoy" : `-${d} d`}</text>
+              <line x1={590 - (d / 20) * 570} x2={590 - (d / 20) * 570} y1="120" y2="124" style={{ stroke: "var(--color-linea)" }} />
+              <text x={590 - (d / 20) * 570} y="138" fontSize="10" textAnchor="middle" fontFamily="IBM Plex Mono" style={{ fill: "var(--color-tenue)" }}>{d === 0 ? "hoy" : `-${d} d`}</text>
             </g>
           ))}
           {s2.map((e, i) => {
@@ -74,7 +74,7 @@ export default function Catalogo() {
             );
           })}
           {s5.map((e) => e.datetime && (
-            <circle key={e.id} cx={590 - ((ahora - new Date(e.datetime).getTime()) / VENTANA) * 570} cy={112} r={4} fill="#C9A46A" />
+            <circle key={e.id} cx={590 - ((ahora - new Date(e.datetime).getTime()) / VENTANA) * 570} cy={112} r={4} style={{ fill: "var(--color-hielo)" }} />
           ))}
         </svg>
         

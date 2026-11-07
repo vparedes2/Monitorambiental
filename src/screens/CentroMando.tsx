@@ -13,7 +13,7 @@ const LEYENDA_INICIO: ItemLeyenda[] = [
   { color: "#7BD88F", texto: "Foco junto a venteo autorizado vigente", forma: "circulo" },
   { color: "#FF8A3D", texto: "Foco junto a instalación sin permiso registrado", forma: "circulo" },
   { color: "#FF4D6D", texto: "Foco lejos de instalaciones declaradas", forma: "circulo" },
-  { color: "#8BA0B6", texto: "Foco fuera del registro de Neuquén", forma: "circulo" },
+  { color: "#A89C8C", texto: "Foco fuera del registro de Neuquén", forma: "circulo" },
   { color: "#C9A46A", texto: "Cuenca Neuquina, área vigilada", forma: "linea" },
   { color: "#8FE3F0", texto: "Satélite, posición al momento de exportar" }
 ];
@@ -130,7 +130,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
         paint: {
           "circle-color": ["get", "color"],
           "circle-radius": ["interpolate", ["linear"], ["zoom"], 2, 1.5, 8, 4],
-          "circle-stroke-color": "#0A1628", "circle-stroke-width": 1
+          "circle-stroke-color": "#12100E", "circle-stroke-width": 1
         }
       });
       // Tocar un foco: vuelo con zoom y ficha del foco
@@ -166,7 +166,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
       if (!m) {
         const el = document.createElement("div");
         el.className = "flex items-center gap-1.5 pointer-events-none";
-        el.innerHTML = `<span style="width:9px;height:9px;border:2px solid #8FE3F0;transform:rotate(45deg);display:block;background:#0A1628"></span><span style="font:500 11px 'IBM Plex Mono',monospace;color:#8FE3F0;text-shadow:0 0 6px #0A1628">${s.nombre}</span>`;
+        el.innerHTML = `<span style="width:9px;height:9px;border:2px solid #8FE3F0;transform:rotate(45deg);display:block;background:#12100E"></span><span style="font:500 11px 'IBM Plex Mono',monospace;color:#8FE3F0;text-shadow:0 0 6px #12100E">${s.nombre}</span>`;
         m = new maplibregl.Marker({ element: el, anchor: "left" }).setLngLat([p.lon, p.lat]).addTo(map);
         marcadores.current[s.id] = m;
       } else {
@@ -253,11 +253,11 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
   return (
     <div className="relative">
       {/* Escenario del globo */}
-      <section className="relative h-[78vh] min-h-[520px] lg:h-[calc(100vh-0px)] overflow-hidden bg-noche" aria-label="Globo terrestre con focos térmicos de Vaca Muerta">
+      <section className="tema-noche relative h-[78vh] min-h-[520px] lg:h-[calc(100vh-0px)] overflow-hidden bg-noche" aria-label="Globo terrestre con focos térmicos de Vaca Muerta">
         <Globo centro={[-42, -18]} zoom={1.15} onListo={alListo} posicionSelector="left-4 sm:left-8 bottom-24" lecturaArriba tituloExport="Focos térmicos en Vaca Muerta" subtituloExport="NASA FIRMS, últimas 48 h" leyendaExport={LEYENDA_INICIO} />
 
         {/* Viñeta para legibilidad */}
-        <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at center, transparent 45%, rgba(10,22,40,.75) 100%), linear-gradient(to bottom, rgba(10,22,40,.85) 0%, transparent 32%, transparent 78%, rgba(10,22,40,.9) 100%)" }} />
+        <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at center, transparent 45%, rgba(18,16,14,.75) 100%), linear-gradient(to bottom, rgba(18,16,14,.85) 0%, transparent 32%, transparent 78%, rgba(18,16,14,.9) 100%)" }} />
 
         {/* Rótulo cinematográfico */}
         <div className="pointer-events-none absolute left-5 top-5 sm:left-8 sm:top-8 max-w-[34rem]">
@@ -420,10 +420,10 @@ function PanelLectura({ focos, frpTotal, conteo, sigListo, estado, histo, maxBin
                 x={i * 30 + 4} width={22} rx={1}
                 initial={{ y: 56, height: 0 }}
                 animate={{ y: 56 - h, height: h }}
-                transition={{ delay: 0.15 + i * 0.06, duration: 0.6 }}
-                fill={i === histo.length - 1 ? "#FF8A3D" : "#8FE3F0"} opacity={i === histo.length - 1 ? 1 : 0.55}
+                transition={{ delay: 0.15 + i * 0.05, duration: 0.5, ease: [0.23, 1, 0.32, 1] }}
+                style={{ fill: "var(--color-llama)" }} opacity={i === histo.length - 1 ? 1 : 0.4}
               />
-              <text x={i * 30 + 15} y={68} textAnchor="middle" fontSize="8" fill="#8BA0B6" fontFamily="IBM Plex Mono">{i === 7 ? "ahora" : `-${(7 - i) * 6}h`}</text>
+              <text x={i * 30 + 15} y={68} textAnchor="middle" fontSize="8" fontFamily="IBM Plex Mono" style={{ fill: "var(--color-tenue)" }}>{i === 7 ? "ahora" : `-${(7 - i) * 6}h`}</text>
             </g>
           );
         })}

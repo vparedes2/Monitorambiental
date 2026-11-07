@@ -47,7 +47,7 @@ interface ResultadoDerrame {
   metodo: string;
 }
 
-const COLOR_NIVEL: Record<Nivel, string> = { alerta: "#FF5A3D", observar: "#F2C14E", normal: "#7FD6A0", sin_datos: "#8BA0B6" };
+const COLOR_NIVEL: Record<Nivel, string> = { alerta: "#FF5A3D", observar: "#F2C14E", normal: "#7FD6A0", sin_datos: "#A89C8C" };
 const TEXTO_NIVEL: Record<Nivel, string> = { alerta: "Alerta", observar: "Observar", normal: "Sin cambios", sin_datos: "Sin datos" };
 
 const SERIES = [
@@ -154,7 +154,7 @@ export default function SueloAgua() {
       })
     });
     if (!map.getLayer("catastro-sa")) {
-      map.addLayer({ id: "catastro-sa", type: "circle", source: "catastro-sa", paint: { "circle-radius": 5, "circle-color": ["get", "color"], "circle-stroke-color": "#0A1628", "circle-stroke-width": 1.5 } });
+      map.addLayer({ id: "catastro-sa", type: "circle", source: "catastro-sa", paint: { "circle-radius": 5, "circle-color": ["get", "color"], "circle-stroke-color": "#12100E", "circle-stroke-width": 1.5 } });
     }
   }, [punto, radio, res, listo, catastro, lote]);
 
@@ -264,7 +264,7 @@ export default function SueloAgua() {
 
   return (
     <div className="flex flex-col lg:flex-row lg:min-h-screen">
-      <section className="relative h-[55vh] lg:h-screen lg:flex-1 lg:sticky lg:top-0" aria-label="Mapa para elegir el área de análisis">
+      <section className="tema-noche bg-noche relative h-[55vh] lg:h-screen lg:flex-1 lg:sticky lg:top-0" aria-label="Mapa para elegir el área de análisis">
         <Globo centro={[-68.95, -38.3]} zoom={8} onListo={(m) => { mapRef.current = m; setListo(true); }}
           tituloExport={modo === "cambios" ? "Análisis de suelo y agua" : "Búsqueda de derrames"}
           subtituloExport={punto ? `${punto.lat.toFixed(4)}°, ${punto.lon.toFixed(4)}°, radio ${radio} m` : undefined}
@@ -322,7 +322,8 @@ export default function SueloAgua() {
             </div>
           </div>
           <button onClick={() => (modo === "cambios" ? analizar() : analizarDerrame())} disabled={!punto || cargando}
-            className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 font-semibold disabled:opacity-50 text-noche ${modo === "cambios" ? "bg-hielo" : "bg-llama"}`}>
+            className={`w-full flex items-center justify-center gap-2 px-3 py-2.5 font-semibold ${!punto ? "border border-dashed border-hielo text-hielo bg-transparent cursor-default" : `text-noche disabled:opacity-60 ${modo === "cambios" ? "bg-hielo" : "bg-llama"}`}`}>
+            {!punto && !cargando && <Crosshair className="w-4 h-4" />}
             {cargando && <Loader2 className="w-4 h-4 animate-spin" />}
             {cargando ? "Analizando imágenes…" : !punto ? "Elegí un punto en el mapa" : modo === "cambios" ? "Analizar este punto" : `Buscar derrame ${tipoDerrame === "suelo" ? "en suelo" : "en agua"}`}
           </button>
@@ -374,7 +375,7 @@ export default function SueloAgua() {
                   return (
                     <li key={c.codigo_sig}>
                       <button onClick={() => elegirInstalacion(c)} className="w-full text-left py-2.5 flex items-start gap-3 hover:bg-noche/40 px-1">
-                        <span className="mt-1.5 w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r && r.nivel !== "error" ? COLOR_NIVEL[r.nivel] : "#22405E" }} />
+                        <span className="mt-1.5 w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r && r.nivel !== "error" ? COLOR_NIVEL[r.nivel] : "var(--color-linea-fuerte)" }} />
                         <span className="flex-1">
                           <span className="block text-sm">{c.nombre_oficial}</span>
                           {r && <span className="block text-xs text-tenue">{r.nivel === "error" ? `Error: ${r.detalle}` : TEXTO_NIVEL[r.nivel]}{r.detalle && r.nivel !== "error" ? `: ${r.detalle}` : ""}</span>}
@@ -398,7 +399,7 @@ function Informe({ res, serie, setSerie }: { res: Resultado; serie: string; setS
     <div className="p-5 space-y-4">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="titulo text-2xl font-semibold">Resultado</h2>
-        <span className="px-2.5 py-1 text-sm font-semibold" style={{ background: COLOR_NIVEL[res.nivel_general], color: "#0A1628" }}>{TEXTO_NIVEL[res.nivel_general]}</span>
+        <span className="px-2.5 py-1 text-sm font-semibold" style={{ background: COLOR_NIVEL[res.nivel_general], color: "#12100E" }}>{TEXTO_NIVEL[res.nivel_general]}</span>
       </div>
       <p className="num text-[11px] text-tenue">
         Reciente {res.periodos.reciente.desde} a {res.periodos.reciente.hasta} ({res.periodos.reciente.escenas_validas} compuestos sin nubes). Base {res.periodos.base.desde} a {res.periodos.base.hasta} ({res.periodos.base.escenas_validas}).
@@ -451,15 +452,15 @@ function Grafico({ base, reciente, k }: { base: any[]; reciente: any[]; k: strin
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full mt-3" role="img" aria-label="Evolución del índice en los dos períodos">
       {[min, (min + max) / 2, max].map((v) => (
         <g key={v}>
-          <line x1={P} x2={W - 8} y1={y(v)} y2={y(v)} stroke="#22405E" strokeWidth="0.5" />
-          <text x={P - 4} y={y(v) + 3} fontSize="9" textAnchor="end" fill="#8BA0B6" fontFamily="IBM Plex Mono">{v.toFixed(2)}</text>
+          <line x1={P} x2={W - 8} y1={y(v)} y2={y(v)} strokeWidth="0.5" style={{ stroke: "var(--color-linea)" }} />
+          <text x={P - 4} y={y(v) + 3} fontSize="9" textAnchor="end" fontFamily="IBM Plex Mono" style={{ fill: "var(--color-tenue)" }}>{v.toFixed(2)}</text>
         </g>
       ))}
-      <text x={P} y={H - 4} fontSize="9" fill="#8BA0B6" fontFamily="IBM Plex Mono">día 0</text>
-      <text x={W - 8} y={H - 4} fontSize="9" textAnchor="end" fill="#8BA0B6" fontFamily="IBM Plex Mono">día 60</text>
-      <path d={linea(base)} fill="none" stroke="#C9A46A" strokeWidth="1.5" strokeDasharray="4 3" />
-      <path d={linea(reciente)} fill="none" stroke="#8FE3F0" strokeWidth="2" />
-      {reciente.filter((f) => f[k] !== null).map((f) => <circle key={f.fecha} cx={x(f, reciente)} cy={y(f[k])} r="2.5" fill="#8FE3F0" />)}
+      <text x={P} y={H - 4} fontSize="9" fontFamily="IBM Plex Mono" style={{ fill: "var(--color-tenue)" }}>día 0</text>
+      <text x={W - 8} y={H - 4} fontSize="9" textAnchor="end" fontFamily="IBM Plex Mono" style={{ fill: "var(--color-tenue)" }}>día 60</text>
+      <path d={linea(base)} fill="none" strokeWidth="1.5" strokeDasharray="4 3" style={{ stroke: "var(--color-hielo)" }} />
+      <path d={linea(reciente)} fill="none" strokeWidth="2" style={{ stroke: "var(--color-agua)" }} />
+      {reciente.filter((f) => f[k] !== null).map((f) => <circle key={f.fecha} cx={x(f, reciente)} cy={y(f[k])} r="2.5" style={{ fill: "var(--color-agua)" }} />)}
     </svg>
   );
 }
@@ -469,7 +470,7 @@ function InformeDerrame({ r }: { r: ResultadoDerrame }) {
     <div className="p-5 space-y-3">
       <div className="flex items-baseline justify-between gap-3">
         <h2 className="titulo text-2xl font-semibold">{r.tipo === "suelo" ? "Derrame en suelo" : "Mancha en agua"}</h2>
-        <span className="px-2.5 py-1 text-sm font-semibold" style={{ background: COLOR_NIVEL[r.nivel], color: "#0A1628" }}>
+        <span className="px-2.5 py-1 text-sm font-semibold" style={{ background: COLOR_NIVEL[r.nivel], color: "#12100E" }}>
           {r.nivel === "normal" ? "Sin indicios" : TEXTO_NIVEL[r.nivel]}
         </span>
       </div>
@@ -539,7 +540,7 @@ function BarridoRio({ map }: { map: MLMap }) {
       type: "FeatureCollection",
       features: ts.map((t) => {
         const r = rs[t.n];
-        const color = !r || r.nivel === "pendiente" ? "#8BA0B6" : r.nivel === "error" ? "#55606E" : COLOR_NIVEL[r.nivel];
+        const color = !r || r.nivel === "pendiente" ? "#A89C8C" : r.nivel === "error" ? "#55606E" : COLOR_NIVEL[r.nivel];
         return { type: "Feature", properties: { color, n: String(t.n) }, geometry: { type: "Polygon", coordinates: [circuloKm(t.lat, t.lon, 1)] } };
       })
     });
@@ -683,7 +684,7 @@ function BarridoRio({ map }: { map: MLMap }) {
           <ul className="divide-y divide-linea border-y border-linea">
             {tramos.map((t) => {
               const r = res[t.n];
-              const color = !r || r.nivel === "pendiente" ? "#22405E" : r.nivel === "error" ? "#55606E" : COLOR_NIVEL[r.nivel];
+              const color = !r || r.nivel === "pendiente" ? "#3A332B" : r.nivel === "error" ? "#55606E" : COLOR_NIVEL[r.nivel];
               return (
                 <li key={t.n}>
                   <button onClick={() => map.flyTo({ center: [t.lon, t.lat], zoom: 13, duration: 1000 })} className="w-full text-left py-2.5 px-1 flex gap-3 hover:bg-noche/40">

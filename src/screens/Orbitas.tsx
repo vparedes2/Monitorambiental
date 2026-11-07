@@ -43,7 +43,7 @@ export default function Orbitas() {
     if (!map || !listo) return;
     setGeo(map, "anelo", { type: "Feature", properties: {}, geometry: { type: "Point", coordinates: [ANELO.lon, ANELO.lat] } });
     if (!map.getLayer("anelo")) {
-      map.addLayer({ id: "anelo", type: "circle", source: "anelo", paint: { "circle-radius": 5, "circle-color": "#C9A46A", "circle-stroke-color": "#0A1628", "circle-stroke-width": 2 } });
+      map.addLayer({ id: "anelo", type: "circle", source: "anelo", paint: { "circle-radius": 5, "circle-color": "#C9A46A", "circle-stroke-color": "#12100E", "circle-stroke-width": 2 } });
     }
   }, [listo]);
 
@@ -82,7 +82,7 @@ export default function Orbitas() {
         el.type = "button";
         el.setAttribute("aria-label", `Seleccionar ${s.nombre}`);
         el.style.cssText = "display:flex;align-items:center;gap:6px;background:none;border:0;cursor:pointer;padding:0";
-        el.innerHTML = `<span style="width:10px;height:10px;border:2px solid ${color};transform:rotate(45deg);display:block;background:#0A1628"></span><span style="font:500 11px 'IBM Plex Mono',monospace;color:${color};text-shadow:0 0 6px #0A1628">${s.nombre}</span>`;
+        el.innerHTML = `<span style="width:10px;height:10px;border:2px solid ${color};transform:rotate(45deg);display:block;background:#12100E"></span><span style="font:500 11px 'IBM Plex Mono',monospace;color:${color};text-shadow:0 0 6px #12100E">${s.nombre}</span>`;
         el.addEventListener("click", () => setSel(s.id));
         m = new maplibregl.Marker({ element: el, anchor: "left" }).setLngLat([p.lon, p.lat]).addTo(map);
         marcadores.current[s.id] = m;
@@ -110,7 +110,7 @@ export default function Orbitas() {
 
   return (
     <div className="flex flex-col lg:flex-row lg:h-screen">
-      <section className="relative h-[62vh] lg:h-auto lg:flex-1" aria-label="Globo con las órbitas de los satélites">
+      <section className="tema-noche bg-noche relative h-[62vh] lg:h-auto lg:flex-1" aria-label="Globo con las órbitas de los satélites">
         <Globo centro={[-62, -30]} zoom={1.6} onListo={(m) => { mapRef.current = m; setListo(true); }}
           tituloExport="Órbitas de los satélites de monitoreo"
           subtituloExport={elegido ? `Traza y franja de ${elegido.nombre}` : undefined}

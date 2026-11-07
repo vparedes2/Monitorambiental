@@ -40,7 +40,7 @@ export function capturarMapa(map: MLMap): Promise<HTMLCanvasElement> {
           ctx.save();
           ctx.translate(x + 6 * escala, y);
           ctx.rotate(Math.PI / 4);
-          ctx.fillStyle = "#0A1628";
+          ctx.fillStyle = "#12100E";
           ctx.strokeStyle = color;
           ctx.lineWidth = 2 * escala;
           ctx.fillRect(-4 * escala, -4 * escala, 8 * escala, 8 * escala);
@@ -50,7 +50,7 @@ export function capturarMapa(map: MLMap): Promise<HTMLCanvasElement> {
           if (txt) {
             ctx.font = `500 ${11 * escala}px "IBM Plex Mono", monospace`;
             ctx.fillStyle = color;
-            ctx.shadowColor = "#0A1628";
+            ctx.shadowColor = "#12100E";
             ctx.shadowBlur = 4 * escala;
             ctx.fillText(txt, x + 16 * escala, y + 4 * escala);
             ctx.shadowBlur = 0;
@@ -82,14 +82,14 @@ export function componerLamina(mapa: HTMLCanvasElement, opts: { titulo: string; 
   c.width = W;
   c.height = H;
   const g = c.getContext("2d")!;
-  g.fillStyle = "#0A1628";
+  g.fillStyle = "#12100E";
   g.fillRect(0, 0, W, H);
 
   // Encabezado
-  g.fillStyle = "#E8EEF4";
+  g.fillStyle = "#EEE7DB";
   g.font = `600 ${30 * k}px "Saira Condensed", "Arial Narrow", sans-serif`;
   g.fillText(opts.titulo, 28 * k, 44 * k);
-  g.fillStyle = "#8BA0B6";
+  g.fillStyle = "#A89C8C";
   g.font = `${15 * k}px "IBM Plex Sans", Arial, sans-serif`;
   g.fillText(opts.subtitulo ?? "", 28 * k, 72 * k);
   g.textAlign = "right";
@@ -101,7 +101,7 @@ export function componerLamina(mapa: HTMLCanvasElement, opts: { titulo: string; 
   // Mapa
   const yMapa = 96 * k;
   g.drawImage(mapa, 0, yMapa, W, altoMapa);
-  g.strokeStyle = "#22405E";
+  g.strokeStyle = "#3A332B";
   g.strokeRect(0.5, yMapa + 0.5, W - 1, altoMapa - 1);
 
   // Leyenda
@@ -134,12 +134,12 @@ export function componerLamina(mapa: HTMLCanvasElement, opts: { titulo: string; 
 
   // Pie con firma
   const yPie = H - 40 * k;
-  g.fillStyle = "#0F2035";
+  g.fillStyle = "#1C1915";
   g.fillRect(0, H - 64 * k, W, 64 * k);
   g.fillStyle = "#C9A46A";
   g.font = `600 ${14 * k}px "IBM Plex Sans", Arial, sans-serif`;
   g.fillText(`${AUTOR.nombre}, ${AUTOR.rol}`, 28 * k, yPie);
-  g.fillStyle = "#8BA0B6";
+  g.fillStyle = "#A89C8C";
   g.font = `${12 * k}px "IBM Plex Sans", Arial, sans-serif`;
   g.fillText(`${AUTOR.web}  |  ${AUTOR.aviso}`, 28 * k, yPie + 20 * k);
   return c;
