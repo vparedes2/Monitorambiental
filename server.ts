@@ -1071,10 +1071,14 @@ const CAPAS_NQN: Record<string, () => Promise<any>> = {
   })),
   sumideros: async () => recortar(await wfsNqn("Pozos", {
     cql: "FLUIDO='SUM'", max: 5000,
-    props: ["WELL_NAME", "ESTADO_GIS", "OPERADOR", "AREA_LEGAL", "YACIMIENTO", "FORM_PROD", "AÑO_PERF", "TYPE_NAME", "PROFUNDIDAD_MEDIDA", "SIST_EXTRACCION"]
+    props: ["WELL_NAME", "ESTADO_GIS", "OPERADOR", "OPERADOR_ORIGINAL", "AREA_LEGAL", "YACIMIENTO", "FORM_PROD", "AÑO_PERF", "TYPE_NAME", "PROFUNDIDAD_MEDIDA", "SIST_EXTRACCION",
+      "INICIO_PERF", "FIN_PERF", "INICIO_TERM", "FIN_TERM", "FECHA_ABANDONO", "LEGAJO", "UWI_SEN"]
   }), (p) => ({
-    nombre: limpio(p.WELL_NAME), estado: limpio(p.ESTADO_GIS), operador: limpio(p.OPERADOR), area: limpio(p.AREA_LEGAL), yacimiento: limpio(p.YACIMIENTO),
-    formacion: limpio(p.FORM_PROD), anio: p["AÑO_PERF"] ?? null, profundidad_m: p.PROFUNDIDAD_MEDIDA || null
+    nombre: limpio(p.WELL_NAME), estado: limpio(p.ESTADO_GIS), operador: limpio(p.OPERADOR), operador_original: limpio(p.OPERADOR_ORIGINAL),
+    area: limpio(p.AREA_LEGAL), yacimiento: limpio(p.YACIMIENTO),
+    formacion: limpio(p.FORM_PROD), anio: p["AÑO_PERF"] ?? null, profundidad_m: p.PROFUNDIDAD_MEDIDA || null,
+    inicio_perf: fechaIso(p.INICIO_PERF), fin_perf: fechaIso(p.FIN_PERF), inicio_term: fechaIso(p.INICIO_TERM), fin_term: fechaIso(p.FIN_TERM),
+    abandono: fechaIso(p.FECHA_ABANDONO), legajo: limpio(p.LEGAJO), id_nacion: p.UWI_SEN ?? null
   })),
   areas: async () => {
     const fc = structuredClone(await wfsNqn("Areas", { props: ["NOMBRE", "OPERADOR", "TITULAR", "TIPO_AREA", "SIGLA", "FIN_CONTRATO"] }));
@@ -1114,6 +1118,17 @@ app.get("/api/neuquen/wfs/:capa", async (req, res) => {
   } catch (e: any) {
     return res.status(502).json({ error: e.message });
   }
+});
+
+// Sonda temporal (solo sitios oficiales de datos abiertos de energía)
+app.get("/api/sonda-energia", async (req, res) => {
+  try {
+    const u = new URL(String(req.query.u || ""));
+    if (!["datos.energia.gob.ar", "datos.gob.ar"].includes(u.hostname)) return res.status(400).json({ error: "host" });
+    const r = await fetch(u, { signal: AbortSignal.timeout(25000), headers: { Range: "bytes=0-6000" } });
+    const t = await r.text();
+    res.json({ status: r.status, tipo: r.headers.get("content-type"), largo: r.headers.get("content-length"), texto: t.slice(0, 6000) });
+  } catch (e: any) { res.status(502).json({ error: e.message }); }
 });
 
 // Mosaicos WMS (locaciones, pozos, líneas de conducción, concesiones) vía el servidor

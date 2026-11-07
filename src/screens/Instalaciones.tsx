@@ -148,7 +148,11 @@ export default function Instalaciones() {
       ["Expediente", p.expediente], ["Vigencia", `${p.inicio ?? "?"} al ${p.vencimiento ?? "?"}`], ["Detecciones en la ventana", p.detecciones]
     ] }));
     clic("x-sum", (p, c) => ({ tipo: "Pozo sumidero", titulo: p.nombre || "Sumidero", lat: c[1], lon: c[0], datos: [
-      ["Operadora", p.operador], ["Área", p.area], ["Yacimiento", p.yacimiento], ["Estado", p.estado], ["Formación", p.formacion], ["Año de perforación", p.anio], ["Profundidad medida (m)", p.profundidad_m]
+      ["Operadora", p.operador], ["Operadora original", p.operador_original !== p.operador ? p.operador_original : null], ["Área", p.area], ["Yacimiento", p.yacimiento],
+      ["Estado", p.estado], ["Abandono", p.abandono], ["Formación", p.formacion], ["Profundidad medida (m)", p.profundidad_m],
+      ["Perforación", p.inicio_perf ? `${p.inicio_perf}${p.fin_perf ? ` al ${p.fin_perf}` : ""}` : p.anio],
+      ["Terminación (inicio de operación)", p.fin_term || p.inicio_term || "Sin fecha en el registro"],
+      ["Legajo en la Provincia", p.legajo === "SI" ? "Sí" : p.legajo === "NO" ? "No" : p.legajo]
     ] }));
     clic("x-ductos", (p, c) => ({ tipo: "Ducto troncal", titulo: p.nombre || "Ducto", lat: c[1], lon: c[0], datos: [
       ["Fluido", p.fluido], ["Operadora", p.operador], ["Desde", p.desde], ["Hasta", p.hasta], ["Diámetro (pulg)", p.diametro_pulg], ["Longitud (km)", p.longitud_km], ["Estado", p.estado]

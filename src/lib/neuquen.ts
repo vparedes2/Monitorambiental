@@ -17,6 +17,8 @@ export interface Instalacion {
 export interface Sumidero {
   nombre: string | null; estado: string | null; operador: string | null; area: string | null; yacimiento: string | null;
   formacion: string | null; anio: number | null; profundidad_m: number | null; lat: number; lon: number;
+  operador_original?: string | null; inicio_perf?: string | null; fin_perf?: string | null; inicio_term?: string | null; fin_term?: string | null;
+  abandono?: string | null; legajo?: string | null; id_nacion?: number | null;
 }
 export interface VenteoAutorizado {
   expediente: string | null; empresa: string | null; area: string | null; instalacion: string | null; motivo: string | null;
@@ -24,7 +26,7 @@ export interface VenteoAutorizado {
   m3_dia_autorizado: number | null; lat: number; lon: number;
 }
 
-const LS = "sig-nqn-v1-";
+const LS = "sig-nqn-v2-";
 const DIA = 86400000;
 
 async function capa<T>(nombre: string, mapa: (p: any, c: [number, number]) => T): Promise<{ items: T[]; consultado: string | null; geojson: any }> {
