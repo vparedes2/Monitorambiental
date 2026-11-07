@@ -1128,7 +1128,7 @@ app.get("/api/sonda-energia", async (req, res) => {
     const r = await fetch(u, { signal: AbortSignal.timeout(25000), headers: { Range: "bytes=0-6000" } });
     const t = await r.text();
     res.json({ status: r.status, tipo: r.headers.get("content-type"), largo: r.headers.get("content-length"), texto: t.slice(0, 6000) });
-  } catch (e: any) { res.status(502).json({ error: e.message }); }
+  } catch (e: any) { res.status(502).json({ error: e.message, causa: String(e.cause?.code || e.cause?.message || e.cause || "") }); }
 });
 
 // Mosaicos WMS (locaciones, pozos, líneas de conducción, concesiones) vía el servidor
