@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useInyeccion, leerIny, type InyPozo, type InyDatos } from "../lib/inyeccion";
+import { useSesion } from "../lib/sesion";
 import type { Map as MLMap } from "maplibre-gl";
 import { motion, AnimatePresence } from "motion/react";
 import { FileDown, Search, X } from "lucide-react";
@@ -26,6 +27,11 @@ const CAPAS = [
 ] as const;
 type IdCapa = typeof CAPAS[number]["id"];
 
+/** Permiso que habilita cada capa (las que no figuran se ven con solo tener la pantalla) */
+const PERMISO_CAPA: Partial<Record<string, string>> = {
+  venteos: "instalaciones.venteos", sumideros: "instalaciones.sumideros", sumnac: "instalaciones.nacion",
+  ductos: "instalaciones.infra", areas: "instalaciones.infra", locaciones: "instalaciones.infra", pozos: "instalaciones.infra", traza: "instalaciones.infra"
+};
 const VIS_LS = "capas-instalaciones-v1";
 const visInicial = (): Record<IdCapa, boolean> => {
   const base = { focos: true, instalaciones: true, venteos: true, sumideros: true, sumnac: true, ductos: true, areas: true, locaciones: false, pozos: false, traza: true } as Record<IdCapa, boolean>;
@@ -61,6 +67,9 @@ export default function Instalaciones() {
   const [dias, setDias] = useState(2);
   const [focos, setFocos] = useState<Foco[]>([]);
   const [estadoFirms, setEstadoFirms] = useState<string>("cargando");
+  const { puede } = useSesion();
+  const capaOk = (id: string) => !PERMISO_CAPA[id] || puede(PERMISO_CAPA[id]!);
+  const capasPermitidas = CAPAS.filter((c) => capaOk(c.id)).map((c) => c.id).join(",");
   const [vis, setVis] = useState(visInicial);
   const [sel, setSel] = useState<Seleccion | null>(null);
   const iny = useInyeccion();
@@ -189,8 +198,8 @@ export default function Instalaciones() {
       inst: c.instalacion ? `${c.instalacion.item.nombre} (${c.instalacion.item.tipo}), a ${Math.round(c.instalacion.distancia)} m` : "—",
       area: c.area ? `${c.area.nombre} (${c.area.operador})` : "Fuera de áreas de Neuquén"
     }, geometry: { type: "Point", coordinates: [f.lon, f.lat] } })) } as any);
-    for (const [id, capas] of Object.entries(CAPAS_MAP)) for (const l of capas) if (map.getLayer(l)) map.setLayoutProperty(l, "visibility", vis[id as IdCapa] ? "visible" : "none");
-  }, [listo, sig.areas, sig.ductos, sig.instalaciones, sig.venteos, sig.sumideros, traza, cruce, venteosEstado, vis]);
+    for (const [id, capas] of Object.entries(CAPAS_MAP)) for (const l of capas) if (map.getLayer(l)) map.setLayoutProperty(l, "visibility", vis[id as IdCapa] && capaOk(id) ? "visible" : "none");
+  }, [listo, sig.areas, sig.ductos, sig.instalaciones, sig.venteos, sig.sumideros, traza, cruce, venteosEstado, vis, capasPermitidas]);
 
   const ir = (lat: number, lon: number, s?: Seleccion) => {
     if (mapRef.current) enfocar(mapRef.current, [lon, lat], 13);
@@ -270,7 +279,7 @@ export default function Instalaciones() {
                   <div key={k} className="flex justify-between gap-3"><dt className="text-tenue shrink-0">{k}</dt><dd className="text-right">{typeof v === "number" ? v.toLocaleString("es-AR") : v}</dd></div>
                 ))}
               </dl>
-              {sel.idNacion && iny && <FichaInyeccion p={iny.pozos[sel.idNacion]} datos={iny} />}
+              {sel.idNacion && iny && puede("instalaciones.nacion") && <FichaInyeccion p={iny.pozos[sel.idNacion]} datos={iny} />}
               <div className="mt-3 flex gap-2 text-xs">
                 <button onClick={() => ir(sel.lat, sel.lon)} className="flex-1 px-2 py-1.5 border border-linea text-hielo hover:border-hielo">Acercar</button>
                 <a className="flex-1 text-center px-2 py-1.5 border border-linea text-hielo hover:border-hielo" target="_blank" rel="noopener" href={`https://earth.google.com/web/@${sel.lat},${sel.lon},0a,1200d,35y,0h,45t,0r`}>Google Earth ↗</a>
@@ -305,16 +314,16 @@ export default function Instalaciones() {
           </ul>
           {sig.error && <p className="text-llama text-xs mt-3">Registro provincial: {sig.error}</p>}
           {estadoFirms === "error" && <p className="text-llama text-xs mt-3">No se pudo consultar NASA FIRMS.</p>}
-          <div className="mt-4 flex gap-2 text-xs">
+          {puede("instalaciones.exportar") && <div className="mt-4 flex gap-2 text-xs">
             <button onClick={exportarInforme} disabled={!focos.length} className="flex items-center gap-1.5 px-2.5 py-1.5 border border-linea text-hielo hover:border-hielo disabled:opacity-50"><FileDown className="w-3.5 h-3.5" /> Informe PDF</button>
             <button onClick={exportarCsv} disabled={!focos.length} className="px-2.5 py-1.5 border border-linea text-hielo hover:border-hielo disabled:opacity-50">CSV del cruce</button>
-          </div>
+          </div>}
         </div>
 
         <div className="p-5 border-b border-linea">
           <p className="text-xs text-tenue mb-2">Capas</p>
           <div className="flex flex-wrap gap-1.5">
-            {CAPAS.map((c) => (
+            {CAPAS.filter((c) => capaOk(c.id)).map((c) => (
               <button key={c.id} onClick={() => setVis((v) => ({ ...v, [c.id]: !v[c.id] }))} aria-pressed={vis[c.id]}
                 className={`flex items-center gap-1.5 px-2 py-1 text-xs border ${vis[c.id] ? "border-hielo text-texto" : "border-linea text-tenue"}`}>
                 <span className="w-2 h-2 rounded-full ring-1 ring-linea-fuerte" style={{ background: c.color, opacity: vis[c.id] ? 1 : 0.35 }} />{c.nombre}
@@ -327,7 +336,7 @@ export default function Instalaciones() {
           </p>
         </div>
 
-        <div className="p-5">
+        {puede("instalaciones.venteos") && <div className="p-5">
           <div className="flex items-baseline justify-between gap-2">
             <h2 className="titulo text-2xl font-semibold">Venteos autorizados</h2>
             <span className="num text-xs text-tenue">{resumenVent.detectados}/{resumenVent.vigentes} vigentes con calor</span>
@@ -365,7 +374,7 @@ export default function Instalaciones() {
             ))}
           </ul>
           <p className="text-[11px] text-tenue mt-4">Fuente: <a className="text-hielo hover:underline" href={URL_SIG_NQN} target="_blank" rel="noopener">{FUENTE_NQN}</a>. Tolerancia de asociación {TOLERANCIA_M} m.</p>
-        </div>
+        </div>}
       </aside>
     </div>
   );

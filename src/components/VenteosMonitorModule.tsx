@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import L from "leaflet";
+import { useSesion } from "../lib/sesion";
 import "leaflet/dist/leaflet.css";
 import { 
   Flame, 
@@ -111,6 +112,7 @@ const nd = (v: number | null | undefined, suf = "") =>
   v === null || v === undefined ? "N/D" : `${v.toLocaleString("es-AR")}${suf}`;
 
 export default function VenteosMonitorModule() {
+  const { puede } = useSesion();
   // Live spatial join detections data and dynamic GeoJSON store
   const [cruces, setCruces] = useState<CruceEspacialVenteo[]>([]);
   const [selectedCruceState, setSelectedCruce] = useState<CruceEspacialVenteo | undefined>(undefined);
@@ -870,7 +872,7 @@ export default function VenteosMonitorModule() {
           <div className="flex flex-wrap items-center gap-2 sm:gap-2.5 text-xs shrink-0 font-mono">
             
             {/* GeoJSON Store Management Button */}
-            <button
+            {puede("focos.kml") && (<button
               onClick={() => setShowUploadModal(true)}
               className="px-3.5 py-2.5 bg-gradient-to-r from-teal-500/20 via-cyan-500/20 to-sky-500/20 hover:from-teal-500/30 hover:to-cyan-500/30 border border-teal-500/50 hover:border-teal-400 text-teal-300 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-teal-500/10 transition-colors cursor-pointer"
               title="Cargar capas GeoJSON oficiales o personalizadas de la Secretaría de Energía"
@@ -880,7 +882,7 @@ export default function VenteosMonitorModule() {
               <span className="bg-teal-500/30 text-teal-200 text-[9px] px-1.5 py-0.5 rounded-full font-black border border-teal-500/40">
                 {instalacionesSig.length} Locaciones
               </span>
-            </button>
+            </button>)}
 
             <div className="bg-slate-950/90 border border-teal-500/30 px-3 py-2 rounded-xl">
               <span className="text-[9px] text-teal-400 uppercase block font-sans">Matches Catastrales</span>
@@ -1313,7 +1315,7 @@ export default function VenteosMonitorModule() {
                         <span>Abrir en Google Earth HD ↗</span>
                       </a>
 
-                      <button
+                      {puede("focos.kml") && (<button
                         onClick={() => {
                           setNewPadName(`Pad Pozo ${currentDet.id_deteccion.split("-").slice(-2).join("-")}`);
                           setShowRegisterModal(true);
@@ -1322,7 +1324,7 @@ export default function VenteosMonitorModule() {
                       >
                         <PlusCircle className="w-3 h-3 text-teal-400" />
                         <span>Registrar como Pad</span>
-                      </button>
+                      </button>)}
                     </div>
                   </div>
                 )}
@@ -1447,7 +1449,7 @@ export default function VenteosMonitorModule() {
               </div>
 
               {/* AI Expert Audit Button */}
-              <button
+              {puede("focos.ia") && (<button
                 onClick={() => handleRunAudit(selectedCruce)}
                 disabled={auditLoading}
                 className="w-full py-3 px-4 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-black font-mono text-xs rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-teal-500/20 transition-colors cursor-pointer disabled:opacity-50"
@@ -1463,7 +1465,7 @@ export default function VenteosMonitorModule() {
                     <span>Auditar telemetría satelital con IA</span>
                   </>
                 )}
-              </button>
+              </button>)}
 
               {/* AI Audit Result Card */}
               {auditError && (

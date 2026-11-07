@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { PRESET_HOTSPOTS } from "../presets";
+import { useSesion } from "../lib/sesion";
 import { Hotspot, AnalysisResponse } from "../types";
 import VacaMuertaMap from "../components/VacaMuertaMap";
 import GaseousAtmosphereWidget from "../components/GaseousAtmosphereWidget";
@@ -17,6 +18,7 @@ import { ShieldAlert, Compass, Activity, CheckCircle, Database, Wind, Droplet, L
 
 export default function TableroDemo({ vista }: { vista: "general" | "venteos" }) {
   const activeTab = vista;
+  const { puede } = useSesion();
   const [selectedHotspot, setSelectedHotspot] = useState<Hotspot>(PRESET_HOTSPOTS[0]);
   const [report, setReport] = useState<AnalysisResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -67,6 +69,7 @@ export default function TableroDemo({ vista }: { vista: "general" | "venteos" })
   };
 
   const handleRunAnalysis = async (params: any) => {
+    if (!puede("demo.ia")) { setError("Tu usuario no tiene habilitado el análisis con IA. Consultá con el administrador."); return; }
     setLoading(true);
     setError(null);
     try {

@@ -1,9 +1,10 @@
 import React, { Suspense, lazy, useEffect, useState } from "react";
-import { Globe2, Orbit, Flame, Images, FlaskConical, Droplets, Factory } from "lucide-react";
+import { Globe2, Orbit, Flame, Images, FlaskConical, Droplets, Factory, Users, LogIn, CircleUser } from "lucide-react";
 import { motion } from "motion/react";
 import { useTema } from "./lib/tema";
 import { Sun, Moon } from "lucide-react";
 import { LogoMarca } from "./components/Logo";
+import { SesionCtx, useSesionRaiz } from "./lib/sesion";
 
 const CentroMando = lazy(() => import("./screens/CentroMando"));
 const Orbitas = lazy(() => import("./screens/Orbitas"));
@@ -11,6 +12,8 @@ const Imagenes = lazy(() => import("./screens/Imagenes"));
 const SueloAgua = lazy(() => import("./screens/SueloAgua"));
 const Instalaciones = lazy(() => import("./screens/Instalaciones"));
 const TableroDemo = lazy(() => import("./screens/TableroDemo"));
+const Ingresar = lazy(() => import("./screens/Ingresar"));
+const Usuarios = lazy(() => import("./screens/Usuarios"));
 
 class Resguardo extends React.Component<{ children: React.ReactNode; clave: string }, { error: string | null }> {
   state = { error: null as string | null };
@@ -34,7 +37,7 @@ class Resguardo extends React.Component<{ children: React.ReactNode; clave: stri
   }
 }
 
-type Ruta = "inicio" | "orbitas" | "instalaciones" | "focos" | "suelo" | "catalogo" | "demo";
+type Ruta = "inicio" | "orbitas" | "instalaciones" | "focos" | "suelo" | "catalogo" | "demo" | "ingresar" | "usuarios";
 
 const RUTAS: { id: Ruta; nombre: string; corto?: string; icono: React.ElementType }[] = [
   { id: "inicio", nombre: "Inicio", icono: Globe2 },
@@ -48,7 +51,7 @@ const RUTAS: { id: Ruta; nombre: string; corto?: string; icono: React.ElementTyp
 
 const leerRuta = (): Ruta => {
   const h = window.location.hash.replace("#/", "").replace("#", "") as Ruta;
-  return RUTAS.some((r) => r.id === h) ? h : "inicio";
+  return RUTAS.some((r) => r.id === h) || h === "ingresar" || h === "usuarios" ? h : "inicio";
 };
 
 function Cargando() {
@@ -65,6 +68,16 @@ function Cargando() {
 export default function App() {
   const [ruta, setRuta] = useState<Ruta>(leerRuta);
   const { tema, alternar } = useTema();
+  const sesion = useSesionRaiz();
+  const { puede, admin, perfil, cargando } = sesion;
+  const visibles = RUTAS.filter((r) => puede(r.id));
+  const extras = [
+    ...(admin ? [{ id: "usuarios" as Ruta, nombre: "Usuarios", icono: Users }] : []),
+    perfil ? { id: "ingresar" as Ruta, nombre: "Mi cuenta", corto: "Cuenta", icono: CircleUser } : { id: "ingresar" as Ruta, nombre: "Ingresar", icono: LogIn }
+  ];
+  const navMovil = [...visibles, ...extras];
+  // Pantalla sin permiso: se pide ingresar (sin sesión) o se vuelve a Inicio
+  const bloqueada = !cargando && RUTAS.some((r) => r.id === ruta) && !puede(ruta);
 
   useEffect(() => {
     const r = RUTAS.find((x) => x.id === ruta);
@@ -83,11 +96,12 @@ export default function App() {
   };
 
   return (
+    <SesionCtx.Provider value={sesion}>
     <div className="sala min-h-screen lg:pl-[88px] pb-[68px] lg:pb-0">
       {/* Riel de navegación (escritorio) */}
       <nav aria-label="Pantallas" className="hidden lg:flex fixed left-0 top-0 bottom-0 w-[88px] flex-col items-center gap-1 py-5 border-r border-linea bg-noche/95 z-50">
         <a href="#/inicio" className="mb-5 logo-hover" aria-label="Monitor ambiental Vaca Muerta, inicio"><LogoMarca size={44} /></a>
-        {RUTAS.map((r) => {
+        {[...visibles, ...extras.slice(0, -1)].map((r) => {
           const activo = ruta === r.id;
           const I = r.icono;
           return (
@@ -99,7 +113,12 @@ export default function App() {
             </a>
           );
         })}
-        <button onClick={alternar} className="mt-auto mb-3 w-[72px] py-2 flex flex-col items-center gap-1 text-[11px] text-tenue hover:text-texto"
+        {(() => { const c = extras[extras.length - 1]; const I = c.icono; return (
+          <a href="#/ingresar" aria-current={ruta === "ingresar" ? "page" : undefined} title={perfil?.email}
+            className={`mt-auto w-[72px] py-2 flex flex-col items-center gap-1 text-[11px] ${ruta === "ingresar" ? "text-hielo" : "text-tenue hover:text-texto"}`}>
+            <I className="w-5 h-5" strokeWidth={1.6} />{c.nombre}
+          </a>); })()}
+        <button onClick={alternar} className="mb-3 w-[72px] py-2 flex flex-col items-center gap-1 text-[11px] text-tenue hover:text-texto"
           aria-label={tema === "dia" ? "Cambiar a tema de noche (Lutita)" : "Cambiar a tema de día (Carta de campo)"}>
           {tema === "dia" ? <Moon className="w-5 h-5" strokeWidth={1.6} /> : <Sun className="w-5 h-5" strokeWidth={1.6} />}
           {tema === "dia" ? "Noche" : "Día"}
@@ -111,8 +130,8 @@ export default function App() {
       </nav>
 
       {/* Barra inferior (móvil) */}
-      <nav aria-label="Pantallas" className="lg:hidden fixed bottom-0 inset-x-0 h-[64px] grid grid-cols-7 border-t border-linea bg-noche/95 backdrop-blur z-50 pb-[env(safe-area-inset-bottom)]">
-        {RUTAS.map((r) => {
+      <nav aria-label="Pantallas" style={{ gridTemplateColumns: `repeat(${navMovil.length}, minmax(0, 1fr))` }} className="lg:hidden fixed bottom-0 inset-x-0 h-[64px] grid border-t border-linea bg-noche/95 backdrop-blur z-50 pb-[env(safe-area-inset-bottom)]">
+        {navMovil.map((r: any) => {
           const activo = ruta === r.id;
           const I = r.icono;
           return (
@@ -132,6 +151,10 @@ export default function App() {
         <Resguardo clave={ruta}>
         <Suspense fallback={<Cargando />}>
           <div key={ruta} className="entrada-pantalla">
+          {bloqueada && (perfil
+            ? <div className="p-8 max-w-xl"><h1 className="titulo text-3xl font-semibold">Sin acceso a esta pantalla</h1><p className="text-tenue mt-2">Tu usuario no tiene habilitada esta sección. Consultá con el administrador.</p></div>
+            : <Ingresar alEntrar={() => setRuta(leerRuta())} />)}
+          {!bloqueada && <>
           {ruta === "inicio" && <CentroMando irA={irA} />}
           {ruta === "orbitas" && <Orbitas />}
           {ruta === "instalaciones" && <Instalaciones />}
@@ -139,10 +162,14 @@ export default function App() {
           {ruta === "suelo" && <SueloAgua />}
           {ruta === "catalogo" && <Imagenes />}
           {ruta === "demo" && <TableroDemo vista="general" />}
+          {ruta === "ingresar" && <Ingresar alEntrar={() => irA("inicio")} />}
+          {ruta === "usuarios" && <Usuarios />}
+          </>}
           </div>
         </Suspense>
         </Resguardo>
       </main>
     </div>
+    </SesionCtx.Provider>
   );
 }

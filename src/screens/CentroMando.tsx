@@ -1,3 +1,4 @@
+import { useSesion } from "../lib/sesion";
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import maplibregl, { Map as MLMap } from "maplibre-gl";
 import { motion, AnimatePresence } from "motion/react";
@@ -396,6 +397,7 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
 }
 
 function PanelLectura({ focos, frpTotal, conteo, sigListo, estado, histo, maxBin, irA, exportarInforme, exportarKml, exportarCsv }: any) {
+  const { puede, perfil } = useSesion();
   return (
     <div>
       <p className="text-xs text-tenue">Últimas 48 h, NASA FIRMS (VIIRS 375 m). Tocá un foco en el mapa para acercarte.</p>
@@ -445,16 +447,17 @@ function PanelLectura({ focos, frpTotal, conteo, sigListo, estado, histo, maxBin
         {estado && estado.estado !== "ok" && <p className="text-llama text-xs">{estado.mensaje}</p>}
       </div>
       <div className="mt-4 flex gap-2">
-        <button onClick={() => irA("focos")} className="flex-1 px-3 py-2 text-sm bg-llama text-noche font-semibold hover:brightness-110">Analizar focos</button>
-        <button onClick={() => irA("instalaciones")} className="px-3 py-2 text-sm border border-linea hover:border-lutita text-lutita">Instalaciones</button>
+        {puede("focos") && <button onClick={() => irA("focos")} className="flex-1 px-3 py-2 text-sm bg-llama text-noche font-semibold hover:brightness-110">Analizar focos</button>}
+        {puede("instalaciones") && <button onClick={() => irA("instalaciones")} className="px-3 py-2 text-sm border border-linea hover:border-lutita text-lutita">Instalaciones</button>}
+        {!perfil && <button onClick={() => irA("ingresar")} className="flex-1 px-3 py-2 text-sm bg-hielo text-noche font-semibold">Ingresar al monitor</button>}
       </div>
-      <div className="mt-2 flex flex-wrap gap-2 text-xs">
+      {puede("inicio.exportar") && <div className="mt-2 flex flex-wrap gap-2 text-xs">
         <button onClick={exportarInforme} disabled={!focos} className="flex items-center gap-1.5 px-2.5 py-1.5 border border-linea text-hielo hover:border-hielo disabled:opacity-50">
           <FileDown className="w-3.5 h-3.5" /> Informe PDF
         </button>
         <button onClick={exportarKml} disabled={!focos} className="px-2.5 py-1.5 border border-linea text-hielo hover:border-hielo disabled:opacity-50">Focos KML (Google Earth)</button>
         <button onClick={exportarCsv} disabled={!focos} className="px-2.5 py-1.5 border border-linea text-hielo hover:border-hielo disabled:opacity-50">CSV</button>
-      </div>
+      </div>}
     </div>
   );
 }

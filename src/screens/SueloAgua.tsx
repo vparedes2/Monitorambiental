@@ -4,6 +4,7 @@ import Globo, { setGeo } from "../components/Globo";
 import { circuloKm } from "../lib/orbits";
 import { Loader2, Crosshair, ListChecks, FileDown } from "lucide-react";
 import { capturarMapa, generarInformePDF, nombreArchivo, type ItemLeyenda } from "../lib/exportar";
+import { useSesion } from "../lib/sesion";
 import { obtenerBarrido, barridoFijo, conCache } from "../services/osmGeo";
 import { useSigNeuquen } from "../lib/neuquen";
 
@@ -108,8 +109,16 @@ export default function SueloAgua() {
   const [loteCorriendo, setLoteCorriendo] = useState(false);
   const [tanda, setTanda] = useState({ desde: 0, n: 0 });
   const [pausa, setPausa] = useState(false);
+  const { puede } = useSesion();
+  const modos = ([["cambios", "Cambios"], ["derrames", "Derrames"], ["barrido", "Barridos"]] as const).filter(([id]) =>
+    id === "cambios" ? puede("suelo.cambios") : id === "derrames" ? puede("suelo.derrame_suelo") || puede("suelo.derrame_agua") : puede("suelo.barridos"));
+  const tiposDerrame = ([["suelo", "En suelo", "Sentinel-2, 20 m"], ["agua", "En agua", "Radar Sentinel-1, 10 m"]] as const).filter(([id]) => puede(`suelo.derrame_${id}`));
   const [modo, setModo] = useState<"cambios" | "derrames" | "barrido">("cambios");
   const [tipoDerrame, setTipoDerrame] = useState<"suelo" | "agua">("suelo");
+  // Si el modo o el tipo elegido no está habilitado para el usuario, pasar al primero que sí
+  const clavesModos = modos.map(([id]) => id).join(), clavesTipos = tiposDerrame.map(([id]) => id).join();
+  useEffect(() => { if (modos.length && !modos.some(([id]) => id === modo)) setModo(modos[0][0]); }, [clavesModos]);
+  useEffect(() => { if (tiposDerrame.length && !tiposDerrame.some(([id]) => id === tipoDerrame)) setTipoDerrame(tiposDerrame[0][0]); }, [clavesTipos]);
   const [resDerrame, setResDerrame] = useState<ResultadoDerrame | null>(null);
 
   const analizarDerrame = async () => {
@@ -327,17 +336,17 @@ export default function SueloAgua() {
           </p>
         </div>
 
-        <div className="px-5 pt-4 flex gap-1" role="tablist" aria-label="Tipo de análisis">
-          {([["cambios", "Cambios"], ["derrames", "Derrames"], ["barrido", "Barridos"]] as const).map(([id, txt]) => (
+        {modos.length > 1 && <div className="px-5 pt-4 flex gap-1" role="tablist" aria-label="Tipo de análisis">
+          {modos.map(([id, txt]) => (
             <button key={id} role="tab" aria-selected={modo === id} onClick={() => { setModo(id); setError(null); }}
               className={`flex-1 px-3 py-2 text-sm border-b-2 ${modo === id ? "border-hielo text-hielo" : "border-linea text-tenue"}`}>{txt}</button>
           ))}
-        </div>
+        </div>}
 
         {modo === "derrames" && (
           <div className="px-5 pt-4 space-y-3">
-            <div className="grid grid-cols-2 gap-2">
-              {([["suelo", "En suelo", "Sentinel-2, 20 m"], ["agua", "En agua", "Radar Sentinel-1, 10 m"]] as const).map(([id, t, sub]) => (
+            <div className={`grid gap-2 ${tiposDerrame.length > 1 ? "grid-cols-2" : "grid-cols-1"}`}>
+              {tiposDerrame.map(([id, t, sub]) => (
                 <button key={id} onClick={() => setTipoDerrame(id)} aria-pressed={tipoDerrame === id}
                   className={`text-left px-3 py-2 border ${tipoDerrame === id ? "border-llama" : "border-linea"}`}>
                   <span className={`block font-medium ${tipoDerrame === id ? "text-llama" : ""}`}>{t}</span>
@@ -353,9 +362,9 @@ export default function SueloAgua() {
           </div>
         )}
 
-        {modo === "barrido" && listo && <BarridoRio map={mapRef.current!} />}
+        {modo === "barrido" && listo && modos.length > 0 && <BarridoRio map={mapRef.current!} />}
 
-        <div className={`p-5 border-b border-linea space-y-4 ${modo === "barrido" ? "hidden" : ""}`}>
+        <div className={`p-5 border-b border-linea space-y-4 ${modo === "barrido" || !modos.length ? "hidden" : ""}`}>
           <div>
             <p className="text-xs text-tenue mb-1.5">Radio del área</p>
             <div className="flex gap-1.5 flex-wrap">
@@ -387,7 +396,7 @@ export default function SueloAgua() {
           </>
         )}
 
-        <div className="p-5 border-t border-linea">
+        {puede("suelo.lote") && <div className="p-5 border-t border-linea">
           <h2 className="titulo text-2xl font-semibold flex items-center gap-2"><ListChecks className="w-5 h-5 text-lutita" /> Análisis por instalación</h2>
           <p className="text-sm text-tenue mt-1">Corre el análisis de cambios sobre los puntos del registro provincial de Neuquén, en tandas de {TANDA} para no agotar el cupo satelital.</p>
           <div className="mt-3 flex flex-wrap gap-2">
@@ -448,7 +457,7 @@ export default function SueloAgua() {
               </ul>
             </>
           )}
-        </div>
+        </div>}
       </aside>
     </div>
   );
@@ -573,6 +582,8 @@ function InformeDerrame({ r }: { r: ResultadoDerrame }) {
 }
 
 function BotonPdf({ onClick }: { onClick: () => void }) {
+  const { puede } = useSesion();
+  if (!puede("suelo.exportar")) return null;
   return (
     <button onClick={onClick} className="w-full flex items-center justify-center gap-2 px-3 py-2 text-sm border border-lutita text-lutita hover:bg-noche/40">
       <FileDown className="w-4 h-4" /> Exportar informe PDF

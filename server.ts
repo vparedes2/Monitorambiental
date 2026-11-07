@@ -130,6 +130,47 @@ const actualizarFirms = async (forzar = false): Promise<EstadoFirms> => {
 const PORT = 3000;
 const app = express();
 
+// ---------------------------------------------------------------------------
+// Usuarios y permisos (Supabase). Las consultas que gastan cupo satelital o de IA
+// exigen sesión y el permiso correspondiente; el resto de los datos públicos queda abierto.
+// ---------------------------------------------------------------------------
+const SUPA_URL = "https://azccpjhcafurltdndkam.supabase.co";
+const SUPA_CLAVE = "sb_publishable_UFzi-mP-yeIThOiavE0n8Q_TEk0pRF9";
+type PerfilSrv = { rol: string; activo: boolean; permisos: Record<string, boolean> };
+const cachePerfil = new Map<string, { t: number; perfil: PerfilSrv | null }>();
+const perfilDe = async (req: any): Promise<PerfilSrv | null> => {
+  const token = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  if (!token) return null;
+  const c = cachePerfil.get(token);
+  if (c && Date.now() - c.t < 5 * 60000) return c.perfil;
+  let perfil: PerfilSrv | null = null;
+  try {
+    const u = await fetch(`${SUPA_URL}/auth/v1/user`, { headers: { apikey: SUPA_CLAVE, Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000) });
+    if (u.ok) {
+      const { id } = await u.json();
+      const p = await fetch(`${SUPA_URL}/rest/v1/perfiles?id=eq.${id}&select=rol,activo,permisos`, { headers: { apikey: SUPA_CLAVE, Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(8000) });
+      if (p.ok) perfil = (await p.json())[0] ?? null;
+    }
+  } catch { /* sin sesión válida */ }
+  cachePerfil.set(token, { t: Date.now(), perfil });
+  if (cachePerfil.size > 1000) cachePerfil.delete(cachePerfil.keys().next().value!);
+  return perfil;
+};
+const puedeSrv = (p: PerfilSrv, id: string) => {
+  if (p.rol === "admin" && p.activo) return true;
+  if (!p.activo) return false;
+  const pantalla = id.split(".")[0];
+  return (pantalla === "inicio" || p.permisos[pantalla] === true) && p.permisos[id] === true;
+};
+/** Exige sesión con al menos uno de los permisos indicados */
+const requiere = (...permisos: string[]) => async (req: any, res: any, next: any) => {
+  const p = await perfilDe(req);
+  if (!p) return res.status(401).json({ error: "Ingresá con tu usuario para usar esta función." });
+  if (!permisos.some((x) => puedeSrv(p, x))) return res.status(403).json({ error: "Tu usuario no tiene habilitada esta función. Consultá con el administrador." });
+  next();
+};
+
+
 // Set body parser with high limit to support satellite image uploads
 app.use(express.json({ limit: "15mb" }));
 app.use(express.urlencoded({ limit: "15mb", extended: true }));
@@ -388,7 +429,7 @@ function evaluatePixel(s){const v=Math.max(0,Math.log(s.VV)*0.21714724095+1);ret
   }
 };
 
-app.get("/api/imagen", async (req, res) => {
+app.get("/api/imagen", requiere("catalogo"), async (req, res) => {
   try {
     const capa = String(req.query.capa || "swir");
     const def = CAPAS_IMAGEN[capa];
@@ -613,7 +654,7 @@ const analizarPunto = async (lat: number, lon: number, radioM: number) => {
 };
 
 const cacheAnalisis = new Map<string, { t: number; data: any }>();
-app.get("/api/analisis/suelo-agua", async (req, res) => {
+app.get("/api/analisis/suelo-agua", requiere("suelo.cambios", "suelo.lote", "suelo.barridos"), async (req, res) => {
   try {
     const lat = Number(req.query.lat);
     const lon = Number(req.query.lon);
@@ -797,7 +838,7 @@ const mascaraDerrame = async (tipo: "suelo" | "agua", lat: number, lon: number, 
   };
 };
 
-app.get("/api/derrames", async (req, res) => {
+app.get("/api/derrames", requiere("suelo.derrame_suelo", "suelo.derrame_agua", "suelo.barridos"), async (req, res) => {
   try {
     const tipo = req.query.tipo === "agua" ? "agua" : "suelo";
     const lat = Number(req.query.lat);
@@ -913,7 +954,7 @@ app.get("/api/derrames", async (req, res) => {
   }
 });
 
-app.get("/api/derrames/imagen", async (req, res) => {
+app.get("/api/derrames/imagen", requiere("suelo.derrame_suelo", "suelo.derrame_agua"), async (req, res) => {
   try {
     const tipo = req.query.tipo === "agua" ? "agua" : "suelo";
     const lat = Number(req.query.lat);
@@ -1417,7 +1458,7 @@ app.get("/api/satellite-connection", async (req, res) => {
 });
 
 // API Endpoint for expert hydrological and watercourses survey
-app.post("/api/analyze-hydrology", async (req, res) => {
+app.post("/api/analyze-hydrology", requiere("demo"), async (req, res) => {
   try {
     const {
       id,
@@ -1774,7 +1815,7 @@ app.get("/api/geoportal/instalaciones", (_req, res) => {
 });
 
 // Endpoint POST para cargar capas catastrales GeoJSON (WFS / FeatureCollection)
-app.post("/api/geoportal/cargar-capa", (req, res) => {
+app.post("/api/geoportal/cargar-capa", requiere("focos.kml"), (req, res) => {
   try {
     const { geojson, mode = "merge" } = req.body || {};
     const payload = geojson !== undefined ? geojson : req.body;
@@ -1803,7 +1844,7 @@ app.post("/api/geoportal/cargar-capa", (req, res) => {
 });
 
 // Endpoint POST para restablecer el catastro a la base oficial
-app.post("/api/geoportal/reset", (_req, res) => {
+app.post("/api/geoportal/reset", requiere("focos.kml"), (_req, res) => {
   const store = resetToOfficialDefaults();
   guardarCatastro();
   const cruces = ejecutarCruceEspacialSatelital();
@@ -1818,7 +1859,7 @@ app.post("/api/geoportal/reset", (_req, res) => {
 });
 
 // Endpoint POST para registrar una instalación individual verificada (ej. nuevo pad)
-app.post("/api/geoportal/registrar-instalacion", (req, res) => {
+app.post("/api/geoportal/registrar-instalacion", requiere("focos.kml"), (req, res) => {
   try {
     const { nombre, tipo, operador, bloque_area, latitud, longitud, radio_tolerancia_metros, cupo_sen_m3d } = req.body;
     if (typeof latitud !== "number" || typeof longitud !== "number") {
@@ -1914,7 +1955,7 @@ app.get("/api/venteos/monitoreo-satelital-en-vivo", async (req, res) => {
 });
 
 // Endpoint para ingestar detecciones satelitales dinámicamente
-app.post("/api/satellites/ingestar-deteccion", (req, res) => {
+app.post("/api/satellites/ingestar-deteccion", requiere("focos.kml"), (req, res) => {
   try {
     const { 
       id_deteccion, 
@@ -1962,7 +2003,7 @@ app.post("/api/satellites/ingestar-deteccion", (req, res) => {
 });
 
 // Endpoint para reiniciar detecciones satelitales
-app.post("/api/satellites/reset", (_req, res) => {
+app.post("/api/satellites/reset", requiere("focos.kml"), (_req, res) => {
   resetDeteccionesSatelitales();
   const cruces = ejecutarCruceEspacialSatelital();
   return res.json({
@@ -1974,7 +2015,7 @@ app.post("/api/satellites/reset", (_req, res) => {
 });
 
 // API Endpoint for expert flaring & venting (venteos) audit
-app.post("/api/analyze-venteo", async (req, res) => {
+app.post("/api/analyze-venteo", requiere("focos.ia"), async (req, res) => {
   try {
     const {
       flareId,
@@ -2148,7 +2189,7 @@ Genera la auditoría en formato JSON estricto.`;
 });
 
 // API Endpoint for expert environmental risk analysis
-app.post("/api/analyze", async (req, res) => {
+app.post("/api/analyze", requiere("demo.ia"), async (req, res) => {
   try {
     const {
       latitude,
