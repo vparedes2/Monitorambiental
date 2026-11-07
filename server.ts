@@ -1120,17 +1120,6 @@ app.get("/api/neuquen/wfs/:capa", async (req, res) => {
   }
 });
 
-// Sonda temporal (solo sitios oficiales de datos abiertos de energía)
-app.get("/api/sonda-energia", async (req, res) => {
-  try {
-    const u = new URL(String(req.query.u || ""));
-    if (!["datos.energia.gob.ar", "datos.gob.ar"].includes(u.hostname)) return res.status(400).json({ error: "host" });
-    const r = await fetch(u, { signal: AbortSignal.timeout(25000), headers: { Range: "bytes=0-6000" } });
-    const t = await r.text();
-    res.json({ status: r.status, tipo: r.headers.get("content-type"), largo: r.headers.get("content-length"), texto: t.slice(0, 6000) });
-  } catch (e: any) { res.status(502).json({ error: e.message, causa: String(e.cause?.code || e.cause?.message || e.cause || "") }); }
-});
-
 // Mosaicos WMS (locaciones, pozos, líneas de conducción, concesiones) vía el servidor
 const CAPAS_WMS_NQN = new Set(["Locaciones", "Pozos", "Pozos_VM", "Lineas_de_conduccion", "Concesiones", "Areas", "Ductos", "Instalaciones"]);
 app.get("/api/neuquen/wms", async (req, res) => {
