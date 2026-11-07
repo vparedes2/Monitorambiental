@@ -22,6 +22,7 @@ import {
   BBOX_CUENCA
 } from "./src/services/satelliteDetectionsService.js";
 import fs from "fs";
+import { decode as decodificarPng, encode as codificarPng } from "fast-png";
 
 dotenv.config();
 
@@ -681,6 +682,88 @@ const bboxCirculo = (lat: number, lon: number, radioM: number) => {
   return [lon - dLon, lat - dLat, lon + dLon, lat + dLat];
 };
 
+// Mancha mínima que cuenta: los píxeles sueltos son ruido (speckle del radar, bordes de nube)
+const MANCHA_MIN_M2 = { agua: 2000, suelo: 800 } as const;
+const cacheMascara = new Map<string, { t: number; png: Buffer }>();
+
+/** Pide la máscara a Sentinel Hub, agrupa los candidatos en manchas continuas (8 vecinos)
+ *  y descarta las menores al mínimo. Devuelve el área que cuenta y la imagen re-dibujada. */
+const mascaraDerrame = async (tipo: "suelo" | "agua", lat: number, lon: number, radio: number, umbral: number, techo: number) => {
+  const clave = [tipo, lat.toFixed(5), lon.toFixed(5), radio, umbral.toFixed(2), techo.toFixed(2)].join("|");
+  const cfg = configDerrame(tipo, radio, umbral, techo);
+  const lado = Math.round(Math.min(800, Math.max(64, (2 * radio) / cfg.resM)));
+  const token = await obtenerTokenCdse();
+  const cuerpo = {
+    input: {
+      bounds: { bbox: bboxCirculo(lat, lon, radio), properties: { crs: "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } },
+      data: [{ ...cfg.dato, dataFilter: { ...cfg.dato.dataFilter, timeRange: { from: cfg.desde.toISOString(), to: cfg.hasta.toISOString() } } }]
+    },
+    output: { width: lado, height: lado, responses: [{ identifier: "default", format: { type: "image/png" } }] },
+    evalscript: cfg.script("imagen")
+  };
+  const r = await fetch("https://sh.dataspace.copernicus.eu/api/v1/process", {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" }, body: JSON.stringify(cuerpo)
+  });
+  if (!r.ok) {
+    const t = await r.text();
+    let msg = t.slice(0, 300);
+    try { msg = JSON.parse(t)?.error?.message || msg; } catch { /* texto */ }
+    throw new Error(`Sentinel Hub (HTTP ${r.status}): ${msg}`);
+  }
+  const img = decodificarPng(new Uint8Array(await r.arrayBuffer()));
+  const W = img.width, H = img.height, ch = img.channels, px = img.data as Uint8Array;
+  const pxM = (2 * radio) / W;
+  // Solo cuenta lo que cae dentro del círculo
+  const dentro = (x: number, y: number) => Math.hypot((x + 0.5) * pxM - radio, (y + 0.5) * pxM - radio) <= radio;
+  const cand = new Uint8Array(W * H);
+  for (let i = 0; i < W * H; i++) {
+    const o = i * ch, a = ch === 4 ? px[o + 3] : 255;
+    if (a > 200 && px[o] > 230 && px[o + 1] < 80 && dentro(i % W, Math.floor(i / W))) cand[i] = 1;
+  }
+  const minPx = Math.max(1, Math.ceil(MANCHA_MIN_M2[tipo] / (pxM * pxM)));
+  const etiqueta = new Int32Array(W * H).fill(-1);
+  const manchas: { px: number[]; area: number; lat: number; lon: number }[] = [];
+  for (let i = 0; i < W * H; i++) {
+    if (!cand[i] || etiqueta[i] >= 0) continue;
+    const pila = [i], grupo: number[] = [];
+    etiqueta[i] = manchas.length;
+    while (pila.length) {
+      const k = pila.pop()!; grupo.push(k);
+      const x = k % W, y = (k - x) / W;
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const j = ny * W + nx;
+        if (cand[j] && etiqueta[j] < 0) { etiqueta[j] = manchas.length; pila.push(j); }
+      }
+    }
+    let sx = 0, sy = 0;
+    grupo.forEach((k) => { sx += k % W; sy += Math.floor(k / W); });
+    const [w0, s0, e0, n0] = bboxCirculo(lat, lon, radio);
+    manchas.push({ px: grupo, area: Math.round(grupo.length * pxM * pxM), lon: w0 + ((sx / grupo.length + 0.5) / W) * (e0 - w0), lat: n0 - ((sy / grupo.length + 0.5) / H) * (n0 - s0) });
+  }
+  const validas = manchas.filter((m) => m.px.length >= minPx).sort((a, b) => b.area - a.area);
+  const sueltos = manchas.filter((m) => m.px.length < minPx);
+  // Re-dibujo: manchas que cuentan en rojo, puntos sueltos en gris tenue, el resto como vino
+  const out = new Uint8Array(W * H * 4);
+  for (let i = 0; i < W * H; i++) {
+    const o = i * ch, a = ch === 4 ? px[o + 3] : 255;
+    out.set(cand[i] ? [0, 0, 0, 0] : [px[o], px[o + 1], px[o + 2], dentro(i % W, Math.floor(i / W)) ? a : Math.round(a * 0.4)], i * 4);
+  }
+  validas.forEach((m) => m.px.forEach((k) => out.set([255, 38, 25, 245], k * 4)));
+  sueltos.forEach((m) => m.px.forEach((k) => out.set([214, 206, 196, 120], k * 4)));
+  const png = Buffer.from(codificarPng({ width: W, height: H, data: out, channels: 4 }));
+  cacheMascara.set(clave, { t: Date.now(), png });
+  if (cacheMascara.size > 60) cacheMascara.delete(cacheMascara.keys().next().value!);
+  return {
+    clave, png,
+    area: validas.reduce((s, m) => s + m.area, 0),
+    descartado: sueltos.reduce((s, m) => s + m.area, 0),
+    n_sueltos: sueltos.length,
+    manchas: validas.slice(0, 5).map((m) => ({ area_m2: m.area, lat: +m.lat.toFixed(5), lon: +m.lon.toFixed(5) }))
+  };
+};
+
 app.get("/api/derrames", async (req, res) => {
   try {
     const tipo = req.query.tipo === "agua" ? "agua" : "suelo";
@@ -744,8 +827,17 @@ app.get("/api/derrames", async (req, res) => {
     const stCand = bandas[claves[0]]?.stats || {};
     const validos = (stCand.sampleCount || 0) - (stCand.noDataCount || 0);
     const frac = typeof stCand.mean === "number" && Number.isFinite(stCand.mean) ? stCand.mean : 0;
-    const areaCand = Math.round(frac * validos * pxM * pxM);
+    let areaCand = Math.round(frac * validos * pxM * pxM);
     const areaBase = Math.round(validos * pxM * pxM);
+    // Agrupar en manchas continuas: solo cuentan las de al menos MANCHA_MIN_M2
+    let mascara: Awaited<ReturnType<typeof mascaraDerrame>> | null = null;
+    if (validos >= 5 && areaCand > 0) {
+      try { mascara = await mascaraDerrame(tipo, lat, lon, radio, umbral, techo); areaCand = mascara.area; } catch { /* queda el conteo por píxel */ }
+    }
+    const minM2 = MANCHA_MIN_M2[tipo];
+    const notaSueltos = mascara && mascara.descartado > 0
+      ? ` Se descartaron ${mascara.descartado.toLocaleString("es-AR")} m² en ${mascara.n_sueltos} puntos sueltos, menores a ${minM2.toLocaleString("es-AR")} m² (ruido normal ${tipo === "agua" ? "del radar" : "de la imagen"}).`
+      : "";
 
     let nivel: "normal" | "observar" | "alerta" | "sin_datos" = "normal";
     let lectura = "";
@@ -758,10 +850,14 @@ app.get("/api/derrames", async (req, res) => {
       if (areaCand >= 2000) { nivel = "alerta"; lectura = `Hay ${areaCand.toLocaleString("es-AR")} m² de suelo que se oscureció bruscamente en los últimos 20 días. Patrón compatible con hidrocarburo derramado; también puede ser suelo removido, humedad o una superficie nueva (asfalto, membrana). Verificar en campo.`; }
       else if (areaCand >= 800) { nivel = "observar"; lectura = `Área chica (${areaCand.toLocaleString("es-AR")} m²) con oscurecimiento reciente. Revisar con la imagen en color natural.`; }
       else { lectura = "Sin oscurecimiento brusco del suelo en los últimos 20 días."; }
+      lectura += notaSueltos;
     } else {
-      if (areaCand >= 10000) { nivel = "alerta"; lectura = `En la última pasada de radar hay ${(areaCand / 10000).toFixed(1)} ha de agua anormalmente lisa (oscura). Patrón compatible con una película de hidrocarburo; también puede ser agua sin viento o algas. Verificar.`; }
-      else if (areaCand >= 2000) { nivel = "observar"; lectura = `Mancha oscura chica (${areaCand.toLocaleString("es-AR")} m²) en el agua en la última pasada de radar.`; }
+      const mayor = mascara?.manchas[0];
+      const donde = mayor ? ` La mayor mide ${mayor.area_m2.toLocaleString("es-AR")} m² y está en ${mayor.lat}, ${mayor.lon}.` : "";
+      if (areaCand >= 10000) { nivel = "alerta"; lectura = `En la última pasada de radar hay ${(areaCand / 10000).toFixed(1)} ha de agua anormalmente lisa (oscura) formando manchas continuas.${donde} Patrón compatible con una película de hidrocarburo; también puede ser agua sin viento o algas. Verificar.`; }
+      else if (areaCand >= 2000) { nivel = "observar"; lectura = `Mancha oscura chica (${areaCand.toLocaleString("es-AR")} m²) en el agua en la última pasada de radar.${donde}`; }
       else { lectura = "Sin manchas anómalas en el agua en la última pasada de radar."; }
+      lectura += notaSueltos;
     }
 
     const bbox = bboxCirculo(lat, lon, radio);
@@ -769,12 +865,15 @@ app.get("/api/derrames", async (req, res) => {
       tipo, punto: { lat, lon }, radio_m: radio, nivel, lectura,
       area_candidata_m2: areaCand,
       area_analizada_m2: areaBase,
+      area_descartada_m2: mascara?.descartado ?? 0,
+      mancha_minima_m2: minM2,
+      manchas: mascara?.manchas ?? [],
       periodo: { desde: cfg.desde.toISOString().slice(0, 10), hasta: cfg.hasta.toISOString().slice(0, 10), corte: cfg.corte ? cfg.corte.toISOString().slice(0, 10) : null },
       imagen: { url: `/api/derrames/imagen?tipo=${tipo}&lat=${lat}&lon=${lon}&radio=${radio}&umbral=${umbral.toFixed(2)}&techo=${techo.toFixed(2)}`, bbox },
       oscurecimiento_general_db: anomMediana,
       metodo: tipo === "suelo"
-        ? "Sentinel-2 L2A (20 m). Por cada píxel: mediana de brillo de los 70 días previos vs. los últimos 20 días, sin nubes ni sombras (SCL). Candidato si cae >30%, queda oscuro (<0,12), no es agua y perdió o no tenía vegetación. Mancha mínima detectable ≈ 800 m²."
-        : `Sentinel-1 GRD IW (10 m, VV). Agua permanente = mediana < −18 dB en 36 días. Candidato si en la última pasada el píxel es al menos ${Math.abs(umbral).toFixed(1)} dB más oscuro que su propia mediana (descontando el cambio general del espejo por viento) y además queda por debajo de ${techo.toFixed(1)} dB, es decir 6 dB más oscuro que el agua de alrededor en esa pasada. Requiere ≥3 pasadas. Las zonas abrigadas del viento junto a la costa pueden dar falsos positivos.`
+        ? "Sentinel-2 L2A (20 m). Por cada píxel: mediana de brillo de los 70 días previos vs. los últimos 20 días, sin nubes ni sombras (SCL). Candidato si cae >30%, queda oscuro (<0,12), no es agua y perdió o no tenía vegetación. Solo cuentan manchas continuas de al menos 800 m²; los píxeles sueltos se descartan."
+        : `Sentinel-1 GRD IW (10 m, VV). Agua permanente = mediana < −18 dB en 36 días. Candidato si en la última pasada el píxel es al menos ${Math.abs(umbral).toFixed(1)} dB más oscuro que su propia mediana (descontando el cambio general del espejo por viento) y además queda por debajo de ${techo.toFixed(1)} dB, es decir 6 dB más oscuro que el agua de alrededor en esa pasada. Requiere ≥3 pasadas. Solo cuentan manchas continuas de al menos ${MANCHA_MIN_M2.agua.toLocaleString("es-AR")} m²; los píxeles sueltos se descartan como ruido del radar. Las zonas abrigadas del viento junto a la costa pueden dar falsos positivos.`
     });
   } catch (e: any) {
     return res.status(500).json({ error: e.message || "Error en la detección" });
@@ -787,33 +886,17 @@ app.get("/api/derrames/imagen", async (req, res) => {
     const lat = Number(req.query.lat);
     const lon = Number(req.query.lon);
     const radio = Math.min(3000, Math.max(100, Number(req.query.radio) || 500));
-    const umbralQ = Number(req.query.umbral);
-    const techoQ = Number(req.query.techo);
-    const cfg = configDerrame(tipo, radio, Number.isFinite(umbralQ) ? Math.min(-4, umbralQ) : -4, Number.isFinite(techoQ) ? Math.min(-21, techoQ) : -21);
-    const lado = Math.round(Math.min(800, Math.max(64, (2 * radio) / cfg.resM)));
-    const token = await obtenerTokenCdse();
-    const cuerpo = {
-      input: {
-        bounds: { bbox: bboxCirculo(lat, lon, radio), properties: { crs: "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } },
-        data: [{ ...cfg.dato, dataFilter: { ...cfg.dato.dataFilter, timeRange: { from: cfg.desde.toISOString(), to: cfg.hasta.toISOString() } } }]
-      },
-      output: { width: lado, height: lado, responses: [{ identifier: "default", format: { type: "image/png" } }] },
-      evalscript: cfg.script("imagen")
-    };
-    const r = await fetch("https://sh.dataspace.copernicus.eu/api/v1/process", {
-      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" }, body: JSON.stringify(cuerpo)
-    });
-    if (!r.ok) {
-      const t = await r.text();
-      let msg = t.slice(0, 300);
-      try { msg = JSON.parse(t)?.error?.message || msg; } catch { /* texto */ }
-      return res.status(502).json({ error: `Sentinel Hub (HTTP ${r.status}): ${msg}` });
-    }
+    const umbralQ = Number(req.query.umbral), techoQ = Number(req.query.techo);
+    const umbral = Number.isFinite(umbralQ) ? Math.min(-4, umbralQ) : -4;
+    const techo = Number.isFinite(techoQ) ? Math.min(-21, techoQ) : -21;
+    const clave = [tipo, lat.toFixed(5), lon.toFixed(5), radio, umbral.toFixed(2), techo.toFixed(2)].join("|");
+    const c = cacheMascara.get(clave);
+    const png = c && Date.now() - c.t < 1800000 ? c.png : (await mascaraDerrame(tipo, lat, lon, radio, umbral, techo)).png;
     res.setHeader("Content-Type", "image/png");
     res.setHeader("Cache-Control", "public, max-age=1800");
-    return res.send(Buffer.from(await r.arrayBuffer()));
+    return res.send(png);
   } catch (e: any) {
-    return res.status(500).json({ error: e.message || "Error generando la imagen" });
+    return res.status(502).json({ error: e.message || "Error generando la imagen" });
   }
 });
 

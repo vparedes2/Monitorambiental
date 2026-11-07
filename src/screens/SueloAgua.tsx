@@ -43,9 +43,32 @@ interface ResultadoDerrame {
   lectura: string;
   area_candidata_m2: number;
   area_analizada_m2: number;
+  area_descartada_m2?: number;
+  mancha_minima_m2?: number;
+  manchas?: { area_m2: number; lat: number; lon: number }[];
   periodo: { desde: string; hasta: string; corte: string | null };
   metodo: string;
 }
+
+/** Guía para leer la imagen de derrames, la misma en pantalla y en el PDF */
+const comoLeer = (tipo: "suelo" | "agua", min = tipo === "agua" ? 2000 : 800): { color?: string; texto: string }[] =>
+  tipo === "agua"
+    ? [
+        { color: "#2673D9", texto: "Azul: agua permanente que el radar analizó (lo que estuvo con agua en las pasadas de los últimos 36 días)." },
+        { color: "#FF2619", texto: `Rojo: manchas continuas de al menos ${min.toLocaleString("es-AR")} m² donde el agua se vio mucho más lisa (oscura) en la última pasada. Son las únicas que cuentan para el resultado.` },
+        { color: "#D6CEC4", texto: "Gris: puntos sueltos descartados. Es el ruido normal del radar y no indica nada." },
+        { texto: "El círculo es el área elegida y toma el color del resultado; lo que queda fuera no cuenta." },
+        { texto: "Una película de hidrocarburo suele ser una mancha alargada o en forma de pluma que sigue la corriente o el viento y nace en un punto: una orilla, un cruce de ducto o una instalación. Manchas pegadas a la costa en zonas protegidas del viento, o que cubren casi todo el espejo, suelen ser agua calma." },
+        { texto: "Si hay rojo: revisar la imagen en color natural de esa fecha y verificar en campo o con dron." }
+      ]
+    : [
+        { color: "#FF2619", texto: `Rojo: manchas continuas de al menos ${min.toLocaleString("es-AR")} m² de suelo que se oscureció más de un 30 % en los últimos 20 días y quedó oscuro. Son las que cuentan para el resultado.` },
+        { color: "#FFB333", texto: "Naranja: oscurecimiento leve; conviene mirarlo pero no suma al resultado." },
+        { color: "#D6CEC4", texto: "Gris: puntos sueltos descartados (ruido o bordes de nube)." },
+        { texto: "El círculo es el área elegida y toma el color del resultado; lo que queda fuera no cuenta." },
+        { texto: "Un derrame suele tener forma irregular y estar junto a una instalación, un ducto o un camino. Un rectángulo de bordes rectos suele ser obra (locación nueva, membrana, asfalto); manchas extensas después de una lluvia suelen ser humedad." },
+        { texto: "Si hay rojo: revisar la imagen en color natural y verificar en campo." }
+      ];
 
 const COLOR_NIVEL: Record<Nivel, string> = { alerta: "#FF5A3D", observar: "#F2C14E", normal: "#7FD6A0", sin_datos: "#A89C8C" };
 const TEXTO_NIVEL: Record<Nivel, string> = { alerta: "Alerta", observar: "Observar", normal: "Sin cambios", sin_datos: "Sin datos" };
@@ -219,9 +242,10 @@ export default function SueloAgua() {
   const exportarDerrame = async () => {
     if (!resDerrame) return;
     const mapa = await fotoMapa();
-    const leyenda: ItemLeyenda[] = [{ color: "#FF2619", texto: "Píxel candidato a derrame" }];
+    const leyenda: ItemLeyenda[] = [{ color: "#FF2619", texto: "Mancha continua candidata" }];
     if (resDerrame.tipo === "suelo") leyenda.push({ color: "#FFB333", texto: "Oscurecimiento leve" });
     else leyenda.push({ color: "#2673D9", texto: "Agua analizada" });
+    leyenda.push({ color: "#D6CEC4", texto: "Punto suelto descartado (ruido)" });
     generarInformePDF({
       titulo: resDerrame.tipo === "suelo" ? "Búsqueda de derrame en suelo" : "Búsqueda de mancha en agua",
       subtitulo: `${lugar()}. Resultado: ${resDerrame.nivel === "normal" ? "Sin indicios" : TEXTO_NIVEL[resDerrame.nivel]}.`,
@@ -235,7 +259,11 @@ export default function SueloAgua() {
             filas: [[`${resDerrame.area_candidata_m2.toLocaleString("es-AR")} m²`, `${(resDerrame.area_analizada_m2 / 10000).toLocaleString("es-AR", { maximumFractionDigits: 1 })} ha`, `${resDerrame.periodo.desde} a ${resDerrame.periodo.hasta}${resDerrame.periodo.corte ? ` (corte ${resDerrame.periodo.corte})` : ""}`, resDerrame.nivel === "normal" ? "Sin indicios" : TEXTO_NIVEL[resDerrame.nivel]]]
           }
         },
-        { titulo: "Lectura", texto: [resDerrame.lectura, "Es un indicio a verificar en campo, no una confirmación."] }
+        ...(resDerrame.manchas && resDerrame.manchas.length
+          ? [{ titulo: "Manchas que cuentan", tabla: { columnas: ["Mancha", "Área (m²)", "Centro (lat, lon)"], filas: resDerrame.manchas.map((m, i) => [String(i + 1), m.area_m2.toLocaleString("es-AR"), `${m.lat}, ${m.lon}`]) } }]
+          : []),
+        { titulo: "Lectura", texto: [resDerrame.lectura, "Es un indicio a verificar en campo, no una confirmación."] },
+        { titulo: "Cómo leer la imagen", texto: comoLeer(resDerrame.tipo, resDerrame.mancha_minima_m2).map((x) => x.texto) }
       ],
       metodo: resDerrame.metodo,
       archivo: nombreArchivo(`informe-derrame-${resDerrame.tipo}`, "pdf")
@@ -275,7 +303,7 @@ export default function SueloAgua() {
         <Globo centro={[-68.95, -38.3]} zoom={8} onListo={(m) => { mapRef.current = m; setListo(true); }}
           tituloExport={modo === "cambios" ? "Análisis de suelo y agua" : "Búsqueda de derrames"}
           subtituloExport={punto ? `${punto.lat.toFixed(4)}°, ${punto.lon.toFixed(4)}°, radio ${radio} m` : undefined}
-          leyendaExport={modo === "derrames" ? [{ color: "#FF2619", texto: "Píxel candidato a derrame" }, { color: "#C9A46A", texto: "Instalación del catastro", forma: "circulo" }] : [{ color: "#C9A46A", texto: "Instalación del catastro", forma: "circulo" }]} />
+          leyendaExport={modo === "derrames" ? [{ color: "#FF2619", texto: "Mancha continua candidata" }, { color: "#D6CEC4", texto: "Punto suelto descartado (ruido)" }, { color: "#C9A46A", texto: "Instalación del catastro", forma: "circulo" }] : [{ color: "#C9A46A", texto: "Instalación del catastro", forma: "circulo" }]} />
         <div className="absolute left-4 top-4 right-4 sm:right-auto instrumento px-4 py-3 max-w-sm pointer-events-none">
           <p className="flex items-center gap-2 text-sm"><Crosshair className="w-4 h-4 text-hielo" /> Tocá el mapa para elegir el punto a analizar</p>
           {punto && <p className="num text-xs text-tenue mt-1">{punto.nombre ? `${punto.nombre}, ` : ""}{punto.lat.toFixed(4)}°, {punto.lon.toFixed(4)}°</p>}
@@ -501,7 +529,7 @@ function InformeDerrame({ r }: { r: ResultadoDerrame }) {
       <div className="flex gap-6">
         <div>
           <p className="num text-3xl text-llama leading-none">{r.area_candidata_m2.toLocaleString("es-AR")}</p>
-          <p className="text-xs text-tenue mt-1">m² candidatos</p>
+          <p className="text-xs text-tenue mt-1">m² en manchas continuas</p>
         </div>
         <div>
           <p className="num text-xl leading-none">{(r.area_analizada_m2 / 10000).toLocaleString("es-AR", { maximumFractionDigits: 1 })}</p>
@@ -509,11 +537,24 @@ function InformeDerrame({ r }: { r: ResultadoDerrame }) {
         </div>
       </div>
       <p className="text-sm leading-snug">{r.lectura}</p>
-      <div className="flex flex-wrap gap-4 text-xs text-tenue">
-        <span className="flex items-center gap-1.5"><span className="w-3 h-3" style={{ background: "#FF2619" }} /> candidato</span>
-        {r.tipo === "suelo" && <span className="flex items-center gap-1.5"><span className="w-3 h-3" style={{ background: "#FFB333" }} /> oscurecimiento leve</span>}
-        {r.tipo === "agua" && <span className="flex items-center gap-1.5"><span className="w-3 h-3" style={{ background: "#2673D9" }} /> agua analizada</span>}
-      </div>
+      {r.manchas && r.manchas.length > 0 && (
+        <ul className="text-xs space-y-1">
+          {r.manchas.map((m, i) => (
+            <li key={i} className="flex justify-between gap-3"><span>Mancha {i + 1}</span><span className="num text-tenue">{m.area_m2.toLocaleString("es-AR")} m² · {m.lat}, {m.lon}</span></li>
+          ))}
+        </ul>
+      )}
+      <details className="border border-linea" open>
+        <summary className="cursor-pointer px-3 py-2 text-sm font-medium">Cómo leer esta imagen</summary>
+        <ul className="px-3 pb-3 space-y-2 text-xs leading-relaxed">
+          {comoLeer(r.tipo, r.mancha_minima_m2).map((x, i) => (
+            <li key={i} className="flex gap-2">
+              {x.color ? <span className="mt-1 w-3 h-3 shrink-0" style={{ background: x.color }} /> : <span className="mt-1 w-3 h-3 shrink-0" />}
+              <span className={x.color ? "" : "text-tenue"}>{x.texto}</span>
+            </li>
+          ))}
+        </ul>
+      </details>
       <p className="num text-[11px] text-tenue">
         Período {r.periodo.desde} a {r.periodo.hasta}{r.periodo.corte ? `, comparando antes y después del ${r.periodo.corte}` : ""}.
       </p>
