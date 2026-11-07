@@ -831,6 +831,8 @@ const handlerBarrido = async (zonaId: string, res: any) => {
     if (c && Date.now() - c.t < 7 * 86400000) return res.json(c.data);
     const data = await obtenerBarrido(zonaId);
     cacheBarrido[zonaId] = { t: Date.now(), data };
+    // Una respuesta buena queda en la CDN 30 días: los cauces no cambian
+    res.set("Cache-Control", "public, s-maxage=2592000, stale-while-revalidate=604800");
     return res.json(data);
   } catch (e: any) {
     return res.status(502).json({ error: e.message || "No se pudo obtener la geometría de la zona" });

@@ -35,7 +35,13 @@ export const ZONAS_BARRIDO: Record<string, ZonaBarrido> = {
   }
 };
 
-export const SERVIDORES_OVERPASS = ["https://overpass-api.de/api/interpreter", "https://overpass.kumi.systems/api/interpreter", "https://overpass.private.coffee/api/interpreter"];
+export const SERVIDORES_OVERPASS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
+  "https://maps.mail.ru/osm/tools/overpass/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.osm.jp/api/interpreter"
+];
 export const consultarOverpass = async (q: string) => {
   let ultimo = "";
   for (const url of SERVIDORES_OVERPASS) {
@@ -46,7 +52,12 @@ export const consultarOverpass = async (q: string) => {
         body: "data=" + encodeURIComponent(q),
         signal: AbortSignal.timeout(17000)
       });
-      if (r.ok) return await r.json();
+      if (r.ok) {
+        const j = await r.json();
+        if ((j.elements || []).length) return j;
+        ultimo = j.remark || "respuesta vacía";
+        continue;
+      }
       ultimo = `HTTP ${r.status}`;
     } catch (e: any) {
       ultimo = e.message;
@@ -193,6 +204,13 @@ export async function obtenerLocalidades() {
       tipo: e.tags.place
     }));
   return { fuente: "OpenStreetMap (© colaboradores de OpenStreetMap, ODbL)", localidades };
+}
+
+/** Trazado fijo guardado en el sitio (los cauces y costas no cambian); evita depender de Overpass en vivo */
+export async function barridoFijo(zonaId: string) {
+  const r = await fetch(`/capas/barrido-${zonaId}.json`);
+  if (!r.ok) throw new Error("sin trazado fijo");
+  return r.json();
 }
 
 /** En el navegador: usa caché local de 7 días, luego OSM directo y por último el servidor */

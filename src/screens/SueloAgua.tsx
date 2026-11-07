@@ -4,7 +4,7 @@ import Globo, { setGeo } from "../components/Globo";
 import { circuloKm } from "../lib/orbits";
 import { Loader2, Crosshair, ListChecks, FileDown } from "lucide-react";
 import { capturarMapa, generarInformePDF, nombreArchivo, type ItemLeyenda } from "../lib/exportar";
-import { obtenerBarrido, conCache } from "../services/osmGeo";
+import { obtenerBarrido, barridoFijo, conCache } from "../services/osmGeo";
 import { useSigNeuquen } from "../lib/neuquen";
 
 type Nivel = "normal" | "observar" | "alerta" | "sin_datos";
@@ -556,11 +556,16 @@ function BarridoRio({ map }: { map: MLMap }) {
     cancelar.current = false;
     try {
       // OpenStreetMap se consulta desde el navegador (con caché de 7 días); el servidor es el respaldo
-      const d: any = await conCache(`barrido-${zona}-v3`, () => obtenerBarrido(zona), async () => {
-        const r = await fetch(`/api/barrido/${zona}`);
-        const j = await r.json();
-        if (!r.ok) throw new Error(j.error);
-        return j;
+      // Orden: caché local → trazado fijo del sitio → OpenStreetMap directo → servidor
+      const d: any = await conCache(`barrido-${zona}-v3`, () => barridoFijo(zona).catch(() => obtenerBarrido(zona)), async () => {
+        try {
+          const r = await fetch(`/api/barrido/${zona}`);
+          const j = await r.json();
+          if (!r.ok) throw new Error(j.error);
+          return j;
+        } catch {
+          throw new Error("No se pudo obtener el trazado del cauce: OpenStreetMap está saturado. Probá de nuevo en unos minutos.");
+        }
       });
       const ts: Tramo[] = d.tramos;
       setTramos(ts);
