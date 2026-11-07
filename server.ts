@@ -11,7 +11,7 @@ import {
   buscarInstalacionSig
 } from "./src/services/geoportalSigService.js";
 import { calcular_distancia_haversine } from "./src/services/cadastralValidation.js";
-import { ZONAS_BARRIDO, obtenerBarrido, obtenerLocalidades } from "./src/services/osmGeo.js";
+import { ZONAS_BARRIDO, obtenerBarrido, obtenerLocalidades, muestrearRio, muestrearCosta } from "./src/services/osmGeo.js";
 import { 
   ejecutarCruceEspacialSatelital, 
   ingestarDeteccionSatelital, 
@@ -824,12 +824,50 @@ app.get("/api/derrames/imagen", async (req, res) => {
 // ---------------------------------------------------------------------------
 const cacheBarrido: Record<string, { t: number; data: any }> = {};
 
+// Hidrografía oficial del IGN (SIG 250): fuente principal de cauces y costas para los barridos
+const IGN_WFS = "https://wms.ign.gob.ar/geoserver/ows";
+const IGN_ZONAS: Record<string, { capa: string; nombre: string; bbox: string }> = {
+  anelo: { capa: "ign:lineas_de_aguas_continentales_perenne", nombre: "Río Neuquén", bbox: "-69.25,-38.75,-68.3,-37.95" },
+  rincon: { capa: "ign:lineas_de_aguas_continentales_perenne", nombre: "Río Colorado", bbox: "-69.4,-37.8,-68.4,-37.0" },
+  marimenuco: { capa: "ign:areas_de_aguas_continentales_BH130", nombre: "Embalse Mari Menuco", bbox: "-69.0,-38.8,-68.3,-38.35" },
+  barreales: { capa: "ign:areas_de_aguas_continentales_BH130", nombre: "Embalse Los Barreales", bbox: "-69.2,-38.8,-68.5,-38.3" }
+};
+const barridoIgn = async (zonaId: string) => {
+  const z = IGN_ZONAS[zonaId], zona = ZONAS_BARRIDO[zonaId];
+  const cql = encodeURIComponent(`fna='${z.nombre}'`);
+  const [x0, y0, x1, y1] = z.bbox.split(",").map(Number);
+  const dentro = (l: { lat: number; lon: number }[]) => l.some((p) => p.lon >= x0 && p.lon <= x1 && p.lat >= y0 && p.lat <= y1);
+  const url = `${IGN_WFS}?service=WFS&version=1.1.0&request=GetFeature&typeName=${z.capa}&outputFormat=application/json&srsName=EPSG:4326&cql_filter=${cql}`;
+  const r = await fetch(url, { signal: AbortSignal.timeout(25000) });
+  if (!r.ok) throw new Error(`IGN HTTP ${r.status}`);
+  const j: any = await r.json();
+  const lineas: { lat: number; lon: number }[][] = [];
+  for (const f of j.features || []) {
+    const g = f.geometry; if (!g) continue;
+    const aPts = (c: number[][]) => c.map(([lon, lat]) => ({ lat, lon }));
+    if (g.type === "LineString") lineas.push(aPts(g.coordinates));
+    if (g.type === "MultiLineString") g.coordinates.forEach((c: number[][]) => lineas.push(aPts(c)));
+    if (g.type === "Polygon") lineas.push(aPts(g.coordinates[0]));
+    if (g.type === "MultiPolygon") g.coordinates.forEach((p: number[][][]) => lineas.push(aPts(p[0])));
+  }
+  const enZona = lineas.filter(dentro);
+  if (!enZona.length) throw new Error("IGN sin geometría para la zona");
+  lineas.length = 0; lineas.push(...enZona);
+  const datos = zona.tipo === "rio" ? { tramos: muestrearRio(lineas, zona.referencia) } : (() => { const m = muestrearCosta(lineas, 20); return { tramos: m.puntos, perimetro_km: m.perimetro_km }; })();
+  return {
+    zona: zona.id, nombre: zona.nombre, tipo: zona.tipo, referencia: zona.referencia, radio_m: 1000,
+    fuente: `${zona.tipo === "rio" ? "Cauce" : "Costa"}: Instituto Geográfico Nacional (SIG 250)`,
+    ...datos
+  };
+};
+
 const handlerBarrido = async (zonaId: string, res: any) => {
   try {
     if (!ZONAS_BARRIDO[zonaId]) return res.status(404).json({ error: `Zona desconocida: ${zonaId}` });
     const c = cacheBarrido[zonaId];
     if (c && Date.now() - c.t < 7 * 86400000) return res.json(c.data);
-    const data = await obtenerBarrido(zonaId);
+    let data: any;
+    try { data = await barridoIgn(zonaId); } catch { data = await obtenerBarrido(zonaId); }
     cacheBarrido[zonaId] = { t: Date.now(), data };
     // Una respuesta buena queda en la CDN 30 días: los cauces no cambian
     res.set("Cache-Control", "public, s-maxage=2592000, stale-while-revalidate=604800");
@@ -838,27 +876,6 @@ const handlerBarrido = async (zonaId: string, res: any) => {
     return res.status(502).json({ error: e.message || "No se pudo obtener la geometría de la zona" });
   }
 };
-
-// Hidrografía oficial del IGN (respaldo de OpenStreetMap para los barridos)
-const IGN_WFS = "https://wms.ign.gob.ar/geoserver/ows";
-app.get("/api/ign/capas", async (_req, res) => {
-  try {
-    const r = await fetch(`${IGN_WFS}?service=WFS&version=2.0.0&request=GetCapabilities`, { signal: AbortSignal.timeout(20000) });
-    const x = await r.text();
-    const capas = [...x.matchAll(/<(?:wfs:)?Name>([^<]+)<\/(?:wfs:)?Name>/g)].map((m) => m[1]).filter((n) => /agua|rio|lag|embal|hidro|curso|espejo/i.test(n));
-    res.json({ status: r.status, capas });
-  } catch (e: any) { res.status(502).json({ error: e.message }); }
-});
-app.get("/api/ign/muestra", async (req, res) => {
-  try {
-    const capa = String(req.query.capa || ""), bbox = String(req.query.bbox || "");
-    if (!/^ign:[a-z0-9_]+$/i.test(capa) || !/^[-0-9.,]+$/.test(bbox)) return res.status(400).json({ error: "parámetros" });
-    const url = `${IGN_WFS}?service=WFS&version=1.1.0&request=GetFeature&typeName=${capa}&outputFormat=application/json&srsName=EPSG:4326&maxFeatures=400&bbox=${bbox},EPSG:4326`;
-    const r = await fetch(url, { signal: AbortSignal.timeout(25000) });
-    const j: any = await r.json();
-    res.json({ n: j.features?.length, props: j.features?.slice(0, 40).map((f: any) => ({ ...f.properties, _tipo: f.geometry?.type, _pts: JSON.stringify(f.geometry?.coordinates || []).split("],[").length })) });
-  } catch (e: any) { res.status(502).json({ error: e.message }); }
-});
 
 // Localidades con coordenadas reales (OpenStreetMap), con caché de 7 días
 let cacheLocalidades: { t: number; data: any } | null = null;

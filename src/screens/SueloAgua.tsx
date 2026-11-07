@@ -556,17 +556,16 @@ function BarridoRio({ map }: { map: MLMap }) {
     cancelar.current = false;
     try {
       // OpenStreetMap se consulta desde el navegador (con caché de 7 días); el servidor es el respaldo
-      // Orden: caché local → trazado fijo del sitio → OpenStreetMap directo → servidor
-      const d: any = await conCache(`barrido-${zona}-v3`, () => barridoFijo(zona).catch(() => obtenerBarrido(zona)), async () => {
-        try {
-          const r = await fetch(`/api/barrido/${zona}`);
-          const j = await r.json();
-          if (!r.ok) throw new Error(j.error);
-          return j;
-        } catch {
-          throw new Error("No se pudo obtener el trazado del cauce: OpenStreetMap está saturado. Probá de nuevo en unos minutos.");
-        }
-      });
+      // Orden: caché local → trazado fijo del sitio → servidor (IGN) → OpenStreetMap desde el navegador
+      const servidor = async () => {
+        const r = await fetch(`/api/barrido/${zona}`);
+        const j = await r.json();
+        if (!r.ok) throw new Error(j.error);
+        return j;
+      };
+      const d: any = await conCache(`barrido-${zona}-v4`, () => barridoFijo(zona).catch(servidor), () =>
+        obtenerBarrido(zona).catch(() => { throw new Error("No se pudo obtener el trazado del cauce. Probá de nuevo en unos minutos."); })
+      );
       const ts: Tramo[] = d.tramos;
       setTramos(ts);
       setFuente(d.fuente);
