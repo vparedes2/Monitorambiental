@@ -847,8 +847,19 @@ const barridoIgn = async (zonaId: string) => {
     const aPts = (c: number[][]) => c.map(([lon, lat]) => ({ lat, lon }));
     if (g.type === "LineString") lineas.push(aPts(g.coordinates));
     if (g.type === "MultiLineString") g.coordinates.forEach((c: number[][]) => lineas.push(aPts(c)));
-    if (g.type === "Polygon") lineas.push(aPts(g.coordinates[0]));
-    if (g.type === "MultiPolygon") g.coordinates.forEach((p: number[][][]) => lineas.push(aPts(p[0])));
+    // Los embalses del IGN vienen cortados en los bordes de hoja (múltiplos de 0,5°): esos lados no son costa
+    const hoja = (v: number) => Math.abs(v * 2 - Math.round(v * 2)) < 1e-7;
+    const costa = (anillo: number[][]) => {
+      let tramo: number[][] = [anillo[0]];
+      for (let k = 1; k < anillo.length; k++) {
+        const [a, b] = [anillo[k - 1], anillo[k]];
+        const corte = (hoja(a[0]) && hoja(b[0]) && a[0] === b[0]) || (hoja(a[1]) && hoja(b[1]) && a[1] === b[1]);
+        if (corte) { if (tramo.length > 1) lineas.push(aPts(tramo)); tramo = [b]; } else tramo.push(b);
+      }
+      if (tramo.length > 1) lineas.push(aPts(tramo));
+    };
+    if (g.type === "Polygon") costa(g.coordinates[0]);
+    if (g.type === "MultiPolygon") g.coordinates.forEach((p: number[][][]) => costa(p[0]));
   }
   const enZona = lineas.filter(dentro);
   if (!enZona.length) throw new Error("IGN sin geometría para la zona");

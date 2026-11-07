@@ -80,47 +80,71 @@ export const lineasOsm = (d: any): { lat: number; lon: number }[][] => {
 export const muestrearRio = (lineas: { lat: number; lon: number }[][], ref: { lat: number; lon: number }) => {
   const kx = 111320 * Math.cos((ref.lat * Math.PI) / 180);
   const ky = 110540;
-  const aXY = (p: { lat: number; lon: number }) => ({ x: (p.lon - ref.lon) * kx, y: (p.lat - ref.lat) * ky });
-  const ways = lineas.filter((g) => g.length > 1).map((g) => g.map(aXY));
+  const ways = lineas.filter((g) => g.length > 1).map((g) => g.map((p) => ({ x: (p.lon - ref.lon) * kx, y: (p.lat - ref.lat) * ky })));
   if (!ways.length) throw new Error("No se encontró el cauce en OpenStreetMap.");
 
-  // Unir tramos de OSM que comparten extremos en una sola línea continua (cauce principal)
-  const usado = new Array(ways.length).fill(false);
-  const distRef = (w: { x: number; y: number }[]) => Math.min(...w.map((p) => Math.hypot(p.x, p.y)));
-  let semilla = 0;
-  ways.forEach((w, k) => { if (distRef(w) < distRef(ways[semilla])) semilla = k; });
-  usado[semilla] = true;
-  let cadena = [...ways[semilla]];
-  const extender = (alFinal: boolean) => {
-    for (;;) {
-      const ext = alFinal ? cadena[cadena.length - 1] : cadena[0];
-      let mejor = -1, invertir = false, distMin = 250;
-      ways.forEach((w, k) => {
-        if (usado[k]) return;
-        const dIni = Math.hypot(w[0].x - ext.x, w[0].y - ext.y);
-        const dFin = Math.hypot(w[w.length - 1].x - ext.x, w[w.length - 1].y - ext.y);
-        // al final de la cadena se engancha por el inicio del tramo; al comienzo, por su final
-        const dDirecto = alFinal ? dIni : dFin;
-        const dInvertido = alFinal ? dFin : dIni;
-        if (dDirecto < distMin) { mejor = k; invertir = false; distMin = dDirecto; }
-        if (dInvertido < distMin) { mejor = k; invertir = true; distMin = dInvertido; }
-      });
-      if (mejor < 0) return;
-      usado[mejor] = true;
-      let w = ways[mejor];
-      if (invertir) w = [...w].reverse();
-      cadena = alFinal ? cadena.concat(w.slice(1)) : w.slice(0, -1).concat(cadena);
-    }
+  // Red de vértices: los consecutivos se unen y los extremos de tramos distintos se enganchan si están a menos de 300 m.
+  // Así se tolera un cauce cortado en pedazos o con brazos (como el del IGN).
+  const nodos: { x: number; y: number }[] = [];
+  const ady: Map<number, number>[] = [];
+  const clave = new Map<string, number>();
+  const nodo = (p: { x: number; y: number }) => {
+    const k = `${Math.round(p.x / 5)}:${Math.round(p.y / 5)}`;
+    let i = clave.get(k);
+    if (i === undefined) { i = nodos.length; nodos.push(p); ady.push(new Map()); clave.set(k, i); }
+    return i;
   };
-  extender(true);
-  extender(false);
+  const unir = (a: number, b: number) => {
+    if (a === b) return;
+    const d = Math.hypot(nodos[a].x - nodos[b].x, nodos[a].y - nodos[b].y);
+    if (!ady[a].has(b) || ady[a].get(b)! > d) { ady[a].set(b, d); ady[b].set(a, d); }
+  };
+  const extremos: number[] = [];
+  for (const w of ways) {
+    let prev = nodo(w[0]); extremos.push(prev);
+    for (let k = 1; k < w.length; k++) { const i = nodo(w[k]); unir(prev, i); prev = i; }
+    extremos.push(prev);
+  }
+  for (let a = 0; a < extremos.length; a++)
+    for (let b = a + 1; b < extremos.length; b++) {
+      const A = nodos[extremos[a]], B = nodos[extremos[b]];
+      if (Math.hypot(A.x - B.x, A.y - B.y) < 300) unir(extremos[a], extremos[b]);
+    }
 
-  // Distancia acumulada a lo largo del cauce
+  // Camino más corto desde el punto del cauce más cercano a la localidad (Dijkstra simple)
+  let origen = 0;
+  nodos.forEach((p, i) => { if (Math.hypot(p.x, p.y) < Math.hypot(nodos[origen].x, nodos[origen].y)) origen = i; });
+  if (Math.hypot(nodos[origen].x, nodos[origen].y) > 30000) throw new Error("El cauce encontrado queda lejos de la localidad de referencia.");
+  const dist = new Float64Array(nodos.length).fill(Infinity), previo = new Int32Array(nodos.length).fill(-1), hecho = new Uint8Array(nodos.length);
+  dist[origen] = 0;
+  const cola: [number, number][] = [[0, origen]];
+  while (cola.length) {
+    let m = 0;
+    for (let k = 1; k < cola.length; k++) if (cola[k][0] < cola[m][0]) m = k;
+    const [d, u] = cola.splice(m, 1)[0];
+    if (hecho[u]) continue;
+    hecho[u] = 1;
+    if (d > 26000) continue;
+    for (const [v, w] of ady[u]) if (d + w < dist[v]) { dist[v] = d + w; previo[v] = u; cola.push([d + w, v]); }
+  }
+  // Extremo más lejano hacia el oeste (aguas arriba) y hacia el este (aguas abajo): los dos ríos corren de oeste a este
+  const lejos = (lado: number) => {
+    let mejor = origen, val = -Infinity;
+    nodos.forEach((p, i) => {
+      if (!isFinite(dist[i]) || Math.sign(p.x - nodos[origen].x) !== lado) return;
+      const v = Math.min(dist[i], 26000) * 10 + lado * (p.x - nodos[origen].x) / 1000;
+      if (v > val) { val = v; mejor = i; }
+    });
+    const camino: number[] = [];
+    for (let i = mejor; i !== -1; i = previo[i]) camino.push(i);
+    return camino.reverse(); // de origen al extremo
+  };
+  const arriba = lejos(-1), abajo = lejos(1);
+  const cadena = [...arriba.reverse(), ...abajo.slice(1)].map((i) => nodos[i]);
+  const iRef = arriba.length - 1;
+
   const acum = [0];
   for (let k = 1; k < cadena.length; k++) acum.push(acum[k - 1] + Math.hypot(cadena[k].x - cadena[k - 1].x, cadena[k].y - cadena[k - 1].y));
-  let iRef = 0;
-  cadena.forEach((p, k) => { if (Math.hypot(p.x, p.y) < Math.hypot(cadena[iRef].x, cadena[iRef].y)) iRef = k; });
-  if (Math.hypot(cadena[iRef].x, cadena[iRef].y) > 30000) throw new Error("El cauce encontrado queda lejos de la localidad de referencia.");
   const puntoEn = (d: number) => {
     if (d < 0 || d > acum[acum.length - 1]) return null;
     let k = 1;
@@ -128,12 +152,10 @@ export const muestrearRio = (lineas: { lat: number; lon: number }[][], ref: { la
     const f = (d - acum[k - 1]) / ((acum[k] - acum[k - 1]) || 1);
     return { x: cadena[k - 1].x + (cadena[k].x - cadena[k - 1].x) * f, y: cadena[k - 1].y + (cadena[k].y - cadena[k - 1].y) * f };
   };
-  // Sentido aguas abajo: los dos ríos corren de oeste a este
-  const signo = cadena[cadena.length - 1].x >= cadena[0].x ? 1 : -1;
   const tramos: any[] = [];
   for (let k = -10; k < 10; k++) {
     const km = (k + 0.5) * 2;
-    const p = puntoEn(acum[iRef] + signo * km * 1000);
+    const p = puntoEn(acum[iRef] + km * 1000);
     if (!p) continue;
     tramos.push({ lat: ref.lat + p.y / ky, lon: ref.lon + p.x / kx, km_desde_ref: km });
   }
