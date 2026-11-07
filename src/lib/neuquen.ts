@@ -103,7 +103,16 @@ const masCercano = <T extends { lat: number; lon: number }>(lat: number, lon: nu
   return mejor ? { item: mejor, distancia: d } : null;
 };
 
-export const vigente = (v: VenteoAutorizado, hoy = new Date()) => !v.vencimiento || new Date(v.vencimiento) >= hoy;
+const vigenteRegistro = (v: VenteoAutorizado, hoy = new Date()) => !v.vencimiento || new Date(v.vencimiento) >= hoy;
+const claveInst = (v: VenteoAutorizado) => `${(v.empresa || "").toLowerCase().replace(/[^a-z]/g, "").slice(0, 6)}|${(v.instalacion || "").toLowerCase().normalize("NFD").replace(/[^a-z0-9]/g, "")}`;
+let indiceVig: { lista: VenteoAutorizado[]; claves: Set<string> } | null = null;
+/** Un permiso cuenta como vigente si él, u otro registro de la misma instalación y empresa, sigue vigente */
+export const vigente = (v: VenteoAutorizado, todos?: VenteoAutorizado[]) => {
+  if (vigenteRegistro(v)) return true;
+  if (!todos) return false;
+  if (!indiceVig || indiceVig.lista !== todos) indiceVig = { lista: todos, claves: new Set(todos.filter((x) => vigenteRegistro(x)).map(claveInst)) };
+  return indiceVig.claves.has(claveInst(v));
+};
 
 const enAnillo = (x: number, y: number, r: number[][]) => {
   let dentro = false;
@@ -143,11 +152,11 @@ export interface Clasificacion {
 
 export function clasificarFoco(lat: number, lon: number, instalaciones: Instalacion[], venteos: VenteoAutorizado[], areas?: any): Clasificacion {
   // Primero un permiso vigente dentro de la tolerancia (una instalación puede tener permisos viejos y renovados)
-  const vVig = masCercano(lat, lon, venteos.filter((x) => vigente(x)));
+  const vVig = masCercano(lat, lon, venteos.filter((x) => vigente(x, venteos)));
   const v = vVig && vVig.distancia <= TOLERANCIA_M ? vVig : masCercano(lat, lon, venteos);
   const i = masCercano(lat, lon, instalaciones);
   const area = areas ? areaDe(lat, lon, areas) : null;
-  if (v && v.distancia <= TOLERANCIA_M) return { clase: vigente(v.item) ? "autorizado" : "vencido", venteo: v, instalacion: i, area };
+  if (v && v.distancia <= TOLERANCIA_M) return { clase: vigente(v.item, venteos) ? "autorizado" : "vencido", venteo: v, instalacion: i, area };
   if (i && i.distancia <= TOLERANCIA_M) return { clase: "instalacion", venteo: v, instalacion: i, area };
   return { clase: areas && !area ? "sin_registro" : "fuera", venteo: v, instalacion: i, area };
 }
@@ -158,7 +167,7 @@ export function estadoVenteos(venteos: VenteoAutorizado[], focos: { lat: number;
     const cerca = focos.filter((f) => Math.abs(f.lat - v.lat) < 0.02 && Math.abs(f.lon - v.lon) < 0.025 && distM(f.lat, f.lon, v.lat, v.lon) <= TOLERANCIA_M);
     return {
       venteo: v,
-      vigente: vigente(v),
+      vigente: vigente(v, venteos),
       detecciones: cerca.length,
       frpMax: cerca.reduce((a, f) => Math.max(a, f.frp), 0),
       ultima: cerca.map((f) => f.fecha).sort().pop() ?? null
