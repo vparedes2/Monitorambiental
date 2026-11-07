@@ -5,7 +5,7 @@
  */
 import { useEffect, useState } from "react";
 
-export interface InyPozo { sigla: string; empresa: string; tipo: string; estado: string; m3: (number | null)[]; prov: boolean }
+export interface InyPozo { sigla: string; empresa: string; tipo: string; estado: string; m3: (number | null)[]; prov: boolean; inicio_perf?: string | null; fin_term?: string | null; abandono?: string | null }
 export interface InyDatos { fuente: string; descargado: string; desde: string; hasta: string; pozos: Record<string, InyPozo> }
 
 export const MESES = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];

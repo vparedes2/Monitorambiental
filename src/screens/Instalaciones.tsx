@@ -17,6 +17,7 @@ const CAPAS = [
   { id: "instalaciones", nombre: "Instalaciones", color: "#EEE7DB" },
   { id: "venteos", nombre: "Venteos autorizados", color: "#7BD88F" },
   { id: "sumideros", nombre: "Pozos sumideros", color: "#5AA9FF" },
+  { id: "sumnac", nombre: "Sumideros solo en registro nacional", color: "#B9DCFF" },
   { id: "ductos", nombre: "Ductos troncales", color: "#C9A46A" },
   { id: "areas", nombre: "Áreas y concesiones", color: "#8FE3F0" },
   { id: "locaciones", nombre: "Locaciones (zoom 11+)", color: "#B48CFF" },
@@ -27,7 +28,7 @@ type IdCapa = typeof CAPAS[number]["id"];
 
 const VIS_LS = "capas-instalaciones-v1";
 const visInicial = (): Record<IdCapa, boolean> => {
-  const base = { focos: true, instalaciones: true, venteos: true, sumideros: true, ductos: true, areas: true, locaciones: false, pozos: false, traza: true } as Record<IdCapa, boolean>;
+  const base = { focos: true, instalaciones: true, venteos: true, sumideros: true, sumnac: true, ductos: true, areas: true, locaciones: false, pozos: false, traza: true } as Record<IdCapa, boolean>;
   try { return { ...base, ...JSON.parse(localStorage.getItem(VIS_LS) || "{}") }; } catch { return base; }
 };
 
@@ -36,6 +37,7 @@ const CAPAS_MAP: Record<IdCapa, string[]> = {
   instalaciones: ["x-inst"],
   venteos: ["x-vent"],
   sumideros: ["x-sum"],
+  sumnac: ["x-sumn"],
   ductos: ["x-ductos"],
   areas: ["x-areas-linea", "x-areas-rotulo"],
   locaciones: ["x-wms-Locaciones"],
@@ -118,12 +120,14 @@ export default function Instalaciones() {
       map.addLayer({ id: `x-wms-${capa}`, type: "raster", source: `wms-${capa}`, minzoom: 11, paint: { "raster-opacity": 0.85 } });
     }
     const vacio: any = { type: "FeatureCollection", features: [] };
-    for (const id of ["areas", "ductos", "traza", "sumideros", "inst", "vent", "focosx"]) setGeo(map, id, vacio);
+    for (const id of ["areas", "ductos", "traza", "sumideros", "sumnac", "inst", "vent", "focosx"]) setGeo(map, id, vacio);
+    fetch("/capas/sumideros-nacion.geojson").then((r) => r.json()).then((g) => setGeo(map, "sumnac", g)).catch(() => {});
     map.addLayer({ id: "x-areas-linea", type: "line", source: "areas", paint: { "line-color": "#8FE3F0", "line-opacity": 0.45, "line-width": 1 } });
     map.addLayer({ id: "x-areas-rotulo", type: "symbol", source: "areas", minzoom: 8.5, layout: { "text-field": ["get", "nombre"], "text-size": 10, "text-font": ["Open Sans Regular"] }, paint: { "text-color": "#8FE3F0", "text-halo-color": "#12100E", "text-halo-width": 1.2 } });
     map.addLayer({ id: "x-ductos", type: "line", source: "ductos", paint: { "line-color": ["case", ["==", ["get", "fluido"], "Gas"], "#C9A46A", "#EEE7DB"], "line-width": 1.6, "line-opacity": 0.8 } });
     map.addLayer({ id: "x-traza", type: "line", source: "traza", paint: { "line-color": "#FF4D6D", "line-width": 3, "line-dasharray": [2, 1] } });
     map.addLayer({ id: "x-sum", type: "circle", source: "sumideros", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 2.5, 12, 6], "circle-color": "#5AA9FF", "circle-stroke-color": "#12100E", "circle-stroke-width": 1 } });
+    map.addLayer({ id: "x-sumn", type: "circle", source: "sumnac", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 3.5, 12, 8], "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": "#B9DCFF", "circle-stroke-width": 1.8 } });
     map.addLayer({ id: "x-inst", type: "circle", source: "inst", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 2.5, 12, 7], "circle-color": ["get", "color"], "circle-opacity": 0.9, "circle-stroke-color": "#12100E", "circle-stroke-width": 1.2 } });
     map.addLayer({ id: "x-vent", type: "circle", source: "vent", paint: {
       "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 6, 12, 14], "circle-color": "rgba(0,0,0,0)",
@@ -155,6 +159,10 @@ export default function Instalaciones() {
       ["Perforación", p.inicio_perf ? `${p.inicio_perf}${p.fin_perf ? ` al ${p.fin_perf}` : ""}` : p.anio],
       ["Terminación (inicio de operación)", p.fin_term || p.inicio_term || "Sin fecha en el registro"],
       ["Legajo en la Provincia", p.legajo === "SI" ? "Sí" : p.legajo === "NO" ? "No" : p.legajo]
+    ] }));
+    clic("x-sumn", (p, c) => ({ tipo: "Sumidero en el registro nacional (no figura en la capa provincial)", titulo: p.nombre || "Sumidero", lat: c[1], lon: c[0], idNacion: p.id_nacion != null ? String(p.id_nacion) : null, datos: [
+      ["Operadora", p.operador], ["Área", p.area], ["Yacimiento", p.yacimiento], ["Estado (Nación)", p.estado], ["Formación", p.formacion], ["Profundidad (m)", p.profundidad_m],
+      ["Perforación", p.inicio_perf], ["Terminación (inicio de operación)", p.fin_term || "Sin fecha en el registro"]
     ] }));
     clic("x-ductos", (p, c) => ({ tipo: "Ducto troncal", titulo: p.nombre || "Ducto", lat: c[1], lon: c[0], datos: [
       ["Fluido", p.fluido], ["Operadora", p.operador], ["Desde", p.desde], ["Hasta", p.hasta], ["Diámetro (pulg)", p.diametro_pulg], ["Longitud (km)", p.longitud_km], ["Estado", p.estado]
@@ -385,6 +393,8 @@ function FichaInyeccion({ p, datos }: { p?: InyPozo; datos: InyDatos }) {
         {l.ultimoMes && <div className="flex justify-between gap-3"><dt className="text-tenue">Ese mes, por día</dt><dd className="num">{l.ultimoDia.toLocaleString("es-AR")} m³/d</dd></div>}
         <div className="flex justify-between gap-3"><dt className="text-tenue">Total {datos.desde.slice(0, 4)}</dt><dd className="num">{l.total.toLocaleString("es-AR")} m³</dd></div>
         <div className="flex justify-between gap-3"><dt className="text-tenue">Estado declarado</dt><dd className="text-right">{p.estado}</dd></div>
+        {p.fin_term && <div className="flex justify-between gap-3"><dt className="text-tenue">Terminación según Nación</dt><dd>{p.fin_term}</dd></div>}
+        {p.abandono && <div className="flex justify-between gap-3"><dt className="text-tenue">Abandono según Nación</dt><dd>{p.abandono}</dd></div>}
       </dl>
       <p className={`mt-2 text-[11px] leading-snug ${color}`}>{l.texto}</p>
       <p className="mt-1 text-[10px] text-tenue">Capítulo IV, Secretaría de Energía. Datos hasta {l.nombreMes(p.m3.length - 1)}.</p>
