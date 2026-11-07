@@ -569,6 +569,18 @@ const evaluarSueloAgua = (base: any[], reciente: any[]) => {
       return { nivel: "normal", lectura: "Vegetación similar al año anterior." };
     })
   ];
+  // Los índices de suelo (humedad, vegetación, suelo desnudo) promedian toda el área: si buena parte es agua
+  // no significan nada, y si el nivel del agua cambió entre años arrastran ese cambio
+  const agua = indicadores[0];
+  const fracAgua = Math.max(agua.base ?? 0, agua.reciente ?? 0) / 100;
+  const cambioAgua = Math.abs(agua.delta ?? 0) / 100;
+  for (const i of indicadores.slice(1)) {
+    if (fracAgua >= 0.5) {
+      Object.assign(i, { nivel: "sin_datos" as Nivel, lectura: `El área es mayormente agua (${(fracAgua * 100).toFixed(0)} %): este índice de suelo no aplica. Para buscar manchas en el agua usá Derrames, en agua.` });
+    } else if ((fracAgua >= 0.15 || cambioAgua >= 0.05) && i.nivel !== "normal" && i.nivel !== "sin_datos") {
+      Object.assign(i, { nivel: "observar" as Nivel, lectura: `${i.lectura} Ojo: hay agua en el área (${(fracAgua * 100).toFixed(0)} %) y su nivel puede haber cambiado entre años, lo que también mueve este índice.` });
+    }
+  }
   const orden: Record<Nivel, number> = { sin_datos: 0, normal: 1, observar: 2, alerta: 3 };
   const general = indicadores.reduce<Nivel>((acc, i) => (orden[i.nivel] > orden[acc] ? i.nivel : acc), "sin_datos");
   return { indicadores, nivel_general: general };
