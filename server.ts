@@ -839,6 +839,27 @@ const handlerBarrido = async (zonaId: string, res: any) => {
   }
 };
 
+// Hidrografía oficial del IGN (respaldo de OpenStreetMap para los barridos)
+const IGN_WFS = "https://wms.ign.gob.ar/geoserver/ows";
+app.get("/api/ign/capas", async (_req, res) => {
+  try {
+    const r = await fetch(`${IGN_WFS}?service=WFS&version=2.0.0&request=GetCapabilities`, { signal: AbortSignal.timeout(20000) });
+    const x = await r.text();
+    const capas = [...x.matchAll(/<(?:wfs:)?Name>([^<]+)<\/(?:wfs:)?Name>/g)].map((m) => m[1]).filter((n) => /agua|rio|lag|embal|hidro|curso|espejo/i.test(n));
+    res.json({ status: r.status, capas });
+  } catch (e: any) { res.status(502).json({ error: e.message }); }
+});
+app.get("/api/ign/muestra", async (req, res) => {
+  try {
+    const capa = String(req.query.capa || ""), bbox = String(req.query.bbox || "");
+    if (!/^ign:[a-z0-9_]+$/i.test(capa) || !/^[-0-9.,]+$/.test(bbox)) return res.status(400).json({ error: "parámetros" });
+    const url = `${IGN_WFS}?service=WFS&version=1.1.0&request=GetFeature&typeName=${capa}&outputFormat=application/json&srsName=EPSG:4326&maxFeatures=400&bbox=${bbox},EPSG:4326`;
+    const r = await fetch(url, { signal: AbortSignal.timeout(25000) });
+    const j: any = await r.json();
+    res.json({ n: j.features?.length, props: j.features?.slice(0, 40).map((f: any) => ({ ...f.properties, _tipo: f.geometry?.type, _pts: JSON.stringify(f.geometry?.coordinates || []).split("],[").length })) });
+  } catch (e: any) { res.status(502).json({ error: e.message }); }
+});
+
 // Localidades con coordenadas reales (OpenStreetMap), con caché de 7 días
 let cacheLocalidades: { t: number; data: any } | null = null;
 app.get("/api/localidades", async (_req, res) => {
