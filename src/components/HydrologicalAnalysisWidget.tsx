@@ -536,11 +536,11 @@ export default function HydrologicalAnalysisWidget() {
     <div class="flex justify-between items-center pb-6 border-b border-slate-800 mb-8 no-print">
       <div class="flex items-center gap-2">
         <span class="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
-        <span class="text-xs font-mono text-emerald-400">EXPEDIENTE GENERADO AUTOMÁTICAMENTE</span>
+        <span class="text-xs font-mono text-emerald-400">Expediente generado automáticamente</span>
       </div>
       <div class="flex items-center gap-2">
-        <button onclick="window.print()" class="px-4 py-2 bg-gradient-to-r from-teal-600 to-sky-600 hover:from-teal-500 hover:to-sky-500 text-white font-bold text-xs rounded-lg transition-all shadow cursor-pointer">
-          🖨️ IMPRIMIR REPORT (PDF)
+        <button onclick="window.print()" class="px-4 py-2 bg-gradient-to-r from-teal-600 to-sky-600 hover:from-teal-500 hover:to-sky-500 text-white font-bold text-xs rounded-lg transition-colors shadow cursor-pointer">
+          Imprimir report (PDF)
         </button>
       </div>
     </div>
@@ -549,13 +549,13 @@ export default function HydrologicalAnalysisWidget() {
     <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 border-b border-slate-800 pb-8 print:border-slate-300">
       <div>
         <h1 class="text-2xl font-black display-font text-sky-400 tracking-tight flex items-center gap-2 print:text-slate-950">
-          💧 Reporte Generado por Sistema Propio - Lic. Paredes Victor
+          Reporte Generado por Sistema Propio - Lic. Paredes Victor
         </h1>
         <p class="text-xs text-slate-400 mt-0.5 print:text-slate-600">Sistema Propio de Monitoreo & Auditoría Hídrica de Cuencas</p>
       </div>
       <div class="text-left md:text-right font-mono text-xs text-slate-400 space-y-1 print:text-slate-700">
         <div><strong>FOLIO:</strong> RE-2026-${Math.floor(100000 + Math.random() * 900000)}</div>
-        <div><strong>FECHA EMISIÓN:</strong> 2026-06-09 16:57:05 UTC</div>
+        <div><strong>Fecha emisión:</strong> 2026-06-09 16:57:05 UTC</div>
         <div><strong>AUDITOR:</strong> vparedes2@gmail.com</div>
       </div>
     </div>
@@ -564,7 +564,7 @@ export default function HydrologicalAnalysisWidget() {
     <div class="bg-gradient-to-r from-sky-950 to-slate-900 border border-sky-500/30 rounded-xl p-5 mb-8 print:bg-slate-100 print:text-black print:border-slate-300">
       <div class="flex justify-between items-center flex-wrap gap-2">
         <div>
-          <span class="text-[9px] font-mono text-sky-400 uppercase tracking-widest font-black block">REPORTE TÉCNICO INTERPROVINCIAL COIRCO</span>
+          <span class="text-[9px] font-mono text-sky-400 uppercase tracking-widest font-black block">Reporte técnico interprovincial coirco</span>
           <h2 class="text-xl font-bold display-font text-slate-100 print:text-slate-950">${bodyName} • Diagnóstico Georreferenciado</h2>
         </div>
         <span class="px-3 py-1 font-mono text-xs font-bold rounded-lg bg-slate-900 border border-slate-800 text-sky-400 print:bg-slate-200 print:text-slate-800">${bodyType}</span>
@@ -574,13 +574,13 @@ export default function HydrologicalAnalysisWidget() {
     <!-- Critical Insitu Warning Banner -->
     <div class="p-5 rounded-xl border border-amber-500/30 bg-amber-500/10 mb-8 text-xs leading-relaxed text-slate-300 print:bg-amber-50 print:border-amber-400 print:text-amber-950">
       <div class="flex items-center gap-2 text-amber-400 font-bold mb-2 print:text-amber-850">
-        ⚠️ DECLARACIÓN DE VALIDACIÓN Y CONTROL REGULATORIO
+        Declaración de validación y control regulatorio
       </div>
       <p class="mb-2">
-        <strong>AVISO DE CONTROL TÉCNICO:</strong> A la fecha del presente reporte, las estimaciones hídricas y análisis de reflectancia óptico-espectral expuestos en este informe <strong class="text-amber-350 underline">FALTAN VALIDACIÓN IN-SITU</strong> en terreno (toma de muestras analíticas físicas, espectrofotometría portátil de campo y calibración directa mediante sensores piezométricos). Las firmas espectrales poseen márgenes de incertidumbre inherentes a los modelos matemáticos de banda del sensor orbital.
+        <strong>Aviso de control técnico:</strong> A la fecha del presente reporte, las estimaciones hídricas y análisis de reflectancia óptico-espectral expuestos en este informe <strong class="text-amber-350 underline">Faltan validación in-situ</strong> en terreno (toma de muestras analíticas físicas, espectrofotometría portátil de campo y calibración directa mediante sensores piezométricos). Las firmas espectrales poseen márgenes de incertidumbre inherentes a los modelos matemáticos de banda del sensor orbital.
       </p>
       <p>
-        <strong>CRITERIO DE ACCIÓN PREVENTIVA:</strong> Sin embargo, las anomalías de reflectancia hídrica NDWI detectadas y el comportamiento multitemporal observado de escorrentía activa <strong class="text-emerald-400 font-bold decoration-dotted underline print:text-teal-850">AMERITAN UNA INSPECCIÓN INMEDIATA EN TERRENO</strong>. La confluencia de riesgos hídricos e históricos identificados justifica plenamente la activación de protocolos de contingencia y la movilización preliminar de personal técnico de HSE para toma de muestras físicas de resguardo.
+        <strong>Criterio de acción preventiva:</strong> Sin embargo, las anomalías de reflectancia hídrica NDWI detectadas y el comportamiento multitemporal observado de escorrentía activa <strong class="text-emerald-400 font-bold decoration-dotted underline print:text-teal-850">Ameritan una inspección inmediata en terreno</strong>. La confluencia de riesgos hídricos e históricos identificados justifica plenamente la activación de protocolos de contingencia y la movilización preliminar de personal técnico de HSE para toma de muestras físicas de resguardo.
       </p>
     </div>
 
@@ -608,11 +608,11 @@ export default function HydrologicalAnalysisWidget() {
     <div class="mb-4 p-4 bg-slate-900/60 border border-slate-800 rounded-xl print:bg-slate-50 print:border-slate-300">
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
         <div>
-          <strong class="text-sky-400 print:text-sky-850 block mb-1">📡 Fuente de Observación Satelital:</strong>
+          <strong class="text-sky-400 print:text-sky-850 block mb-1">Fuente de Observación Satelital:</strong>
           <span class="text-slate-300 print:text-slate-800 leading-snug">${sourceData}</span>
         </div>
         <div>
-          <strong class="text-sky-400 print:text-sky-850 block mb-1">📅 Fecha de Observación Satelital:</strong>
+          <strong class="text-sky-400 print:text-sky-850 block mb-1">Fecha de Observación Satelital:</strong>
           <span class="text-slate-300 print:text-slate-800 font-mono text-xs">${observationDate}</span>
         </div>
       </div>
@@ -623,7 +623,7 @@ export default function HydrologicalAnalysisWidget() {
       
       <div class="bg-slate-900/40 border border-slate-850 p-4 rounded-xl print:bg-white print:border-slate-200">
         <h3 class="font-bold text-sm text-slate-200 pb-1.5 border-b border-slate-850 mb-2 tracking-wide flex items-center gap-1.5 print:text-slate-950 print:border-slate-300">
-          🔬 Diagnóstico Espectral de Canales y NDWI
+          Diagnóstico Espectral de Canales y NDWI
         </h3>
         <p class="text-slate-300 print:text-slate-800">
           ${report.diagnostic_espectral || report.diagnostic_spectral}
@@ -632,7 +632,7 @@ export default function HydrologicalAnalysisWidget() {
 
       <div class="bg-slate-900/40 border border-slate-850 p-4 rounded-xl print:bg-white print:border-slate-200">
         <h3 class="font-bold text-sm text-slate-200 pb-1.5 border-b border-slate-850 mb-2 tracking-wide flex items-center gap-1.5 print:text-slate-950 print:border-slate-300">
-          ⚠️ Rutas de Contaminación Activas en Cuenca
+          Rutas de Contaminación Activas en Cuenca
         </h3>
         <p class="text-slate-350 leading-relaxed print:text-slate-800">
           ${report.contaminacion_rutas || report.contamination_routes}
@@ -641,7 +641,7 @@ export default function HydrologicalAnalysisWidget() {
 
       <div class="bg-slate-900/40 border border-slate-850 p-4 rounded-xl print:bg-white print:border-slate-200">
         <h3 class="font-bold text-sm text-slate-200 pb-1.5 border-b border-slate-850 mb-2 tracking-wide flex items-center gap-1.5 print:text-slate-950 print:border-slate-300">
-          🏢 Análisis de Entidades Lindantes y Proximidades
+          Análisis de Entidades Lindantes y Proximidades
         </h3>
         <p class="text-slate-350 leading-relaxed print:text-slate-800">
           <strong>Estudio de proximidad:</strong> ${nearCompanies}
@@ -650,7 +650,7 @@ export default function HydrologicalAnalysisWidget() {
 
       <div class="bg-rose-950/15 border border-rose-500/20 p-4 rounded-xl print:bg-slate-100 print:border-slate-300">
         <h3 class="font-bold text-rose-450 uppercase tracking-wider mb-2 flex items-center gap-1.5 print:text-rose-850">
-          ⚠️ Evaluación de Pasivo / Locación Histórica Activa (Explicación Satelital)
+          Evaluación de Pasivo / Locación Histórica Activa (Explicación Satelital)
         </h3>
         <p class="text-slate-300 leading-relaxed print:text-slate-800">
           ${historyAnalysis}
@@ -660,7 +660,7 @@ export default function HydrologicalAnalysisWidget() {
       <!-- Confidence Index Methodology Block -->
       <div class="bg-slate-900/60 border border-slate-800 p-5 rounded-xl print:bg-white print:border-slate-300">
         <h3 class="font-bold text-sm text-slate-200 pb-1.5 border-b border-slate-800 mb-2 tracking-wide flex items-center gap-1.5 print:text-slate-950 print:border-slate-300">
-          🧪 Metodología & Índice de Confianza de Detección Espectral (${slick}%)
+          Metodología & Índice de Confianza de Detección Espectral (${slick}%)
         </h3>
         <p class="text-[11px] text-slate-300 leading-relaxed print:text-slate-850">
           La probabilidad estimada de película de brillo del <strong>${slick}%</strong> se calcula basándose en una matriz de teledetección robusta integrada por cuatro pilares analíticos:
@@ -675,7 +675,7 @@ export default function HydrologicalAnalysisWidget() {
 
       <div class="bg-slate-900/40 border border-slate-850 p-4 rounded-xl print:bg-white print:border-slate-200">
         <h3 class="font-bold text-sm text-slate-200 pb-1.5 border-b border-slate-850 mb-2 tracking-wide flex items-center gap-1.5 print:text-slate-950 print:border-slate-300">
-          🛰️ Cartografía Satelital del Desvío Hídrico y Puntos de Interés (${isSat ? "Modo Satelital Real" : "Modo Vectorial Estándar"})
+          Cartografía Satelital del Desvío Hídrico y Puntos de Interés (${isSat ? "Modo Satelital Real" : "Modo Vectorial Estándar"})
         </h3>
         <div class="relative w-full aspect-[16/10] bg-slate-950 rounded-lg overflow-hidden border border-slate-800 mb-3 print:border-slate-300">
           <svg viewBox="0 0 800 500" class="w-full h-full" xmlns="http://www.w3.org/2000/svg">
@@ -793,7 +793,7 @@ export default function HydrologicalAnalysisWidget() {
 
       <div class="bg-teal-950/15 border border-teal-500/20 p-4 rounded-xl print:bg-emerald-50 print:border-emerald-200">
         <h3 class="font-bold text-sm text-teal-400 mb-2 tracking-wide flex items-center gap-1.5 print:text-emerald-900">
-          ✅ Protocolo de Mitigación y Plan de Contingencia Recomendado (HSE)
+          Protocolo de Mitigación y Plan de Contingencia Recomendado (HSE)
         </h3>
         <p class="text-slate-300 print:text-slate-900 font-medium">
           ${report.plan_contingencia || report.contingency_plan}
@@ -802,7 +802,7 @@ export default function HydrologicalAnalysisWidget() {
 
       <div class="bg-slate-900/60 border border-slate-800/80 p-4 rounded-xl print:bg-slate-50 print:border-slate-300">
         <h3 class="font-bold text-sm text-sky-400 mb-3 tracking-wide flex items-center gap-1.5 print:text-slate-900">
-          📋 Respaldos de Validación en Base de Datos Satelital
+          Respaldos de Validación en Base de Datos Satelital
         </h3>
         <p class="text-[10.5px] text-slate-400 mb-3 print:text-slate-600 leading-normal">
           Para certificar y auditar oficialmente bajo sistema de conformidad, se incluye el contraste de este indicador espectral con los siguientes 5 respaldos técnicos activos para <strong>${bodyName}</strong>:
@@ -836,15 +836,15 @@ export default function HydrologicalAnalysisWidget() {
 
     <!-- Static Details Footer -->
     <div class="mt-8 grid grid-cols-3 gap-2 border-t border-b border-slate-800 py-3 text-[9px] font-mono text-slate-500 print:border-slate-200 print:text-slate-600">
-      <div><strong>CRUCES DE OLEODUCTOS:</strong> ${ducts} cruces analizados</div>
-      <div><strong>POZOS ACTIVOS EN RADIO:</strong> ${wells} plataformas cercanas</div>
-      <div><strong>RIESGO SLICK COMPLEMENTARIO:</strong> ${slick}%</div>
+      <div><strong>Cruces de oleoductos:</strong> ${ducts} cruces analizados</div>
+      <div><strong>Pozos activos en radio:</strong> ${wells} plataformas cercanas</div>
+      <div><strong>Riesgo slick complementario:</strong> ${slick}%</div>
     </div>
 
     <!-- Official Signature Footer -->
     <div class="mt-12 pt-8 border-t border-slate-800 flex flex-col sm:flex-row justify-between items-center gap-4 text-[10px] text-slate-500 print:border-slate-300 print:text-slate-600">
       <div class="text-center sm:text-left">
-        <div><strong>RESPONSABLE EMISIÓN:</strong> Lic. Paredes Victor / Sistema Propio de Reportes</div>
+        <div><strong>Responsable emisión:</strong> Lic. Paredes Victor / Sistema Propio de Reportes</div>
         <div>Generado en conformidad con normas ambientales de Calidad Hídrica y Monitoreo local.</div>
       </div>
       <div class="text-center sm:text-right">
@@ -903,11 +903,11 @@ export default function HydrologicalAnalysisWidget() {
         <div>
           <div className="flex items-center gap-2">
             <span className="p-1 px-2.5 text-[9px] font-black text-sky-400 bg-sky-500/10 border border-sky-500/25 rounded font-mono">
-              COMPUTACIÓN HIDROLÓGICA NDWI
+              Computación hidrológica NDWI
             </span>
             <span className="flex items-center gap-1 text-[10px] text-teal-400 font-mono">
               <span className="w-1.5 h-1.5 rounded-full bg-teal-400 animate-ping"></span>
-              DETECCIÓN DE PELÍCULAS DE HIDROCARBUROS
+              Detección de películas de hidrocarburos
             </span>
           </div>
           <h2 className="text-lg font-black text-slate-100 font-sans mt-1">
@@ -925,7 +925,7 @@ export default function HydrologicalAnalysisWidget() {
         {/* Left selector col - 5 col */}
         <div className="lg:col-span-4 space-y-2.5">
           <span className="text-[10px] font-mono text-slate-500 block uppercase tracking-widest font-bold">
-            SELECCIONAR CUERPO O CAUCE TRASPASADO:
+            Seleccionar cuerpo o cauce traspasado:
           </span>
           <div className="space-y-2">
             {WATER_BODIES_DATA.map((body) => {
@@ -940,7 +940,7 @@ export default function HydrologicalAnalysisWidget() {
                     setReport(null);
                     setError(null);
                   }}
-                  className={`w-full text-left p-3.5 rounded-xl border transition-all duration-200 cursor-pointer flex justify-between items-center relative ${
+                  className={`w-full text-left p-3.5 rounded-xl border transition-colors duration-200 cursor-pointer flex justify-between items-center relative ${
                     isSelected
                       ? "bg-slate-900 border-sky-500/70 ring-1 ring-sky-500/25 text-slate-100 shadow-lg shadow-sky-950/20"
                       : "bg-slate-950/40 border-slate-850 hover:bg-slate-900 hover:border-slate-800 text-slate-350"
@@ -987,7 +987,7 @@ export default function HydrologicalAnalysisWidget() {
             <div className="flex flex-wrap justify-between items-start gap-3 border-b border-slate-850 pb-3">
               <div>
                 <span className="text-[10px] font-mono text-sky-400 uppercase tracking-widest font-black">
-                  EXPLORACIÓN DE INTEGRIDAD HÍDRICA
+                  Exploración de integridad hídrica
                 </span>
                 <h3 className="text-lg font-extrabold text-slate-100 flex items-center gap-2">
                   {selectedBody.name}
@@ -1070,7 +1070,7 @@ export default function HydrologicalAnalysisWidget() {
                 <Activity className="w-4 h-4 animate-pulse" />
               </span>
               <div>
-                <span className="text-[9.5px] font-mono font-bold text-sky-400 block uppercase">INDICADOR MULTIESPECTRAL ACTUAL (SENTINEL-2):</span>
+                <span className="text-[9.5px] font-mono font-bold text-sky-400 block uppercase">Indicador multiespectral actual (SENTINEL-2):</span>
                 <p className="text-[11px] text-slate-300 mt-0.5 leading-snug">
                   {selectedBody.spectralIndicator}
                 </p>
@@ -1080,7 +1080,7 @@ export default function HydrologicalAnalysisWidget() {
             {/* Sparkline historical trend chart using customized styled SVG bars */}
             <div className="pt-2 border-t border-slate-850/60">
               <span className="text-[10px] font-mono text-slate-450 block uppercase tracking-wider mb-2 font-bold">
-                HISTORIAL DE TURBIDEZ Y RIESGO HIDROLÓGICO (ESTACIONAL 2024 - 2026):
+                Historial de turbidez y riesgo hidrológico (ESTACIONAL 2024 - 2026):
               </span>
               <div className="grid grid-cols-3 gap-4">
                 {selectedBody.historicalData.map((data, idx) => (
@@ -1102,12 +1102,12 @@ export default function HydrologicalAnalysisWidget() {
                     {/* Tiny styled visual micro-bar */}
                     <div className="h-9 w-6 flex items-end gap-0.5 bg-slate-900/50 p-1 rounded">
                       <div 
-                        className="bg-slate-700 w-1/2 rounded-full transition-all" 
+                        className="bg-slate-700 w-1/2 rounded-full transition-colors" 
                         style={{ height: `${(data.turbidity / 45) * 100}%` }}
                         title="NTU Bar"
                       ></div>
                       <div 
-                        className="bg-sky-400 w-1/2 rounded-full transition-all" 
+                        className="bg-sky-400 w-1/2 rounded-full transition-colors" 
                         style={{ height: `${data.risk}%` }}
                         title="Risk Bar"
                       ></div>
@@ -1129,18 +1129,18 @@ export default function HydrologicalAnalysisWidget() {
               <button
                 onClick={() => handleRunHydrologyAnalysis(selectedBody)}
                 disabled={loading}
-                className="px-4 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-800 disabled:text-slate-500 font-sans text-xs font-extrabold text-white rounded-xl shadow-lg shadow-sky-950/20 active:scale-95 transition-all text-center flex items-center justify-center gap-2 shrink-0 cursor-pointer"
+                className="px-4 py-2.5 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-800 disabled:text-slate-500 font-sans text-xs font-extrabold text-white rounded-xl shadow-lg shadow-sky-950/20 active:scale-95 transition-colors text-center flex items-center justify-center gap-2 shrink-0 cursor-pointer"
                 id="btn-run-hydrology-ai"
               >
                 {loading ? (
                   <>
                     <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>AUDITANDO CUENCA...</span>
+                    <span>Auditando cuenca...</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-3.5 h-3.5" />
-                    <span>AUDITAR CUENCA CON INTELIGENCIA ARTIFICIAL</span>
+                    <span>Auditar cuenca con inteligencia artificial</span>
                   </>
                 )}
               </button>
@@ -1162,7 +1162,7 @@ export default function HydrologicalAnalysisWidget() {
                 <div className="flex justify-between items-center pb-2 border-b border-slate-850 text-xs">
                   <span className="font-mono text-[10.5px] font-bold text-sky-400 flex items-center gap-1.5">
                     <FileText className="w-3.5 h-3.5 text-sky-400" />
-                    INFORME DE VULNERABILIDAD HIDROGEOLÓGICA REGULATORIO
+                    Informe de vulnerabilidad hidrogeológica regulatorio
                   </span>
                   <span className="text-[10px] font-mono text-slate-400">
                     Certeza: {report.certitude || "ALTA"} • Ley Nqn 1875
@@ -1177,7 +1177,7 @@ export default function HydrologicalAnalysisWidget() {
                     <AlertTriangle className="w-4.5 h-4.5 text-amber-400 shrink-0 mt-0.5" />
                     <div>
                       <p className="font-extrabold text-amber-200 uppercase text-[11px] tracking-wide">
-                        ⚠️ CIRCUITO AUXILIAR DE RESPALDO ACTIVADO (AI OFFLINE)
+                        Circuito auxiliar de respaldo activado (AI OFFLINE)
                       </p>
                       <p className="text-slate-350 text-[10.5px] mt-1 leading-normal">
                         El servidor ha detectado una sobrecarga o falta de cuota en el canal de Inteligencia Artificial. Se ha levantado automáticamente un peritaje con nuestro modelo de simulación física calibrado de forma local para {selectedBody.name}.
@@ -1189,21 +1189,21 @@ export default function HydrologicalAnalysisWidget() {
                 {/* Geolocalized Telemetry and Calculated Risk Parameters */}
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-slate-950/40 p-1 rounded-xl">
                   <div className="bg-slate-950/80 border border-slate-850/80 p-2.5 rounded-lg flex flex-col gap-0.5">
-                    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider block">COORDENADAS DE ORIGEN</span>
+                    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider block">Coordenadas de origen</span>
                     <span className="text-[11px] font-black font-mono text-sky-450 text-sky-400">
                       {report.coordenadas || `${selectedBody.latitude}, ${selectedBody.longitude}`}
                     </span>
                   </div>
                   
                   <div className="bg-slate-950/80 border border-slate-850/80 p-2.5 rounded-lg flex flex-col gap-0.5">
-                    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider block">ZONA / ÁREA INDUSTRIAL</span>
+                    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider block">Zona / área industrial</span>
                     <span className="text-[11px] font-bold text-slate-300 truncate">
                       {report.zona_afectada || selectedBody.region}
                     </span>
                   </div>
 
                   <div className="bg-slate-950/80 border border-slate-850/80 p-2.5 rounded-lg flex flex-col gap-0.5">
-                    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider block">RIESGO ASIGNADO</span>
+                    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider block">Riesgo asignado</span>
                     <span className={`text-[11px] font-extrabold font-mono flex items-center gap-1 ${
                       (report.nivel_riesgo_calculado || selectedBody.riskLevel) === 'Crítico' 
                         ? 'text-red-400' 
@@ -1216,7 +1216,7 @@ export default function HydrologicalAnalysisWidget() {
                   </div>
 
                   <div className="bg-slate-950/80 border border-slate-850/80 p-2.5 rounded-lg flex flex-col gap-0.5">
-                    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider block">VULNERABILIDAD AMBIENTAL</span>
+                    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-wider block">Vulnerabilidad ambiental</span>
                     <span className="text-[11px] font-black font-mono text-teal-400">
                       {report.porcentaje_vulnerabilidad || selectedBody.vulnerability}%
                     </span>
@@ -1228,7 +1228,7 @@ export default function HydrologicalAnalysisWidget() {
                   
                   <div className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-850">
                     <span className="font-bold text-slate-200 block border-b border-slate-900 pb-1">
-                      🔬 Diagnóstico de Teledetección Satelital (NDWI / Turbidez)
+                      Diagnóstico de Teledetección Satelital (NDWI / Turbidez)
                     </span>
                     <p className="text-[11px] text-slate-300 leading-normal">
                       {report.diagnostic_espectral || report.diagnostic_spectral}
@@ -1237,7 +1237,7 @@ export default function HydrologicalAnalysisWidget() {
 
                   <div className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-850">
                     <span className="font-bold text-slate-200 block border-b border-slate-900 pb-1">
-                      ⚠️ Rutas de Contaminación Activas en Cuenca
+                      Rutas de Contaminación Activas en Cuenca
                     </span>
                     <p className="text-[11px] text-slate-300 leading-normal">
                       {report.contaminacion_rutas || report.contamination_routes}
@@ -1251,7 +1251,7 @@ export default function HydrologicalAnalysisWidget() {
                   
                   <div className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-850">
                     <span className="font-bold text-slate-200 block border-b border-slate-900 pb-1 text-sky-400">
-                      📡 Fuentes Oficiales de Teledetección
+                      Fuentes Oficiales de Teledetección
                     </span>
                     <p className="text-[11px] text-slate-350 leading-normal">
                       <strong>Fuentes:</strong> {report.fuentes_datos || "ESA Copernicus Sentinel-2 MSI, NASA/USGS Landsat-9, Catastro Minero de Neuquén y Red Hidrométrica COIRCO."}
@@ -1263,7 +1263,7 @@ export default function HydrologicalAnalysisWidget() {
 
                   <div className="space-y-2 bg-slate-950 p-3 rounded-lg border border-slate-850">
                     <span className="font-bold text-slate-200 block border-b border-slate-900 pb-1 text-sky-400">
-                      🏭 Análisis de Entidades Lindantes (-38.361, -68.762)
+                      Análisis de Entidades Lindantes (-38.361, -68.762)
                     </span>
                     <p className="text-[11px] text-slate-350 leading-normal">
                       <strong>Estudio de proximidad:</strong> {report.empresas_industriales_cercanas || "Frack Shack (Área de acopio de fluidos y tanques de fracturación hídrica) e infraestructura lindera como LEGAM S.A. (Perímetro arbolado residencial/logístico)."}
@@ -1288,11 +1288,11 @@ export default function HydrologicalAnalysisWidget() {
                   <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-1.5 border-b border-slate-900 pb-2">
                     <span className="font-extrabold text-xs text-slate-200 flex items-center gap-1.5 uppercase tracking-wide">
                       <Layers className="w-4 h-4 text-sky-400" />
-                      ESQUEMA CARTOGRÁFICO SATELITAL DE DESVÍOS Y DESCARGA (Sentinel-2 GIS)
+                      Esquema cartográfico satelital de desvíos y descarga (Sentinel-2 GIS)
                     </span>
                     <span className="text-[9.5px] font-mono text-teal-400 font-extrabold flex items-center gap-1">
                       <span className="w-2 h-2 rounded-full bg-teal-500 animate-ping inline-block"></span>
-                      ENLACE ESPECTRAL ACTIVO (COORDS: -38.361, -68.762)
+                      Enlace espectral activo (COORDS: -38.361, -68.762)
                     </span>
                   </div>
 
@@ -1384,7 +1384,7 @@ export default function HydrologicalAnalysisWidget() {
                       <g opacity="0.85">
                         <rect x="115" y="135" width="235" height="16" rx="2" fill="#020617" stroke="#f43f5e" strokeWidth="0.5" />
                         <text x="123" y="146" fill="#fca5a5" fontSize="7.5" fontFamily="monospace" fontWeight="bold">
-                          ⌜POLÍGONO REGISTRADO HSE - COIRCO SECTOR-A • 4.2 km²⌟
+                          ⌜Polígono registrado HSE - coirco sector-a • 4.2 km²⌟
                         </text>
                       </g>
 
@@ -1554,14 +1554,14 @@ export default function HydrologicalAnalysisWidget() {
                     <div className="absolute top-3 left-3 bg-slate-950/90 border border-slate-800/80 px-2.5 py-1.5 rounded text-[9px] font-mono text-slate-300 space-y-0.5 shadow-lg max-w-[200px]">
                       <div className="flex items-center gap-1.5">
                         <div className="w-1.5 h-1.5 bg-sky-500 rounded-full animate-ping"></div>
-                        <span className="font-extrabold text-sky-400">SENTINEL-2 MSI L2A</span>
+                        <span className="font-extrabold text-sky-400">Sentinel-2 msi L2A</span>
                       </div>
-                      <div className="text-slate-450 leading-tight">RESOLUCIÓN ESPACIAL: 10M</div>
+                      <div className="text-slate-450 leading-tight">Resolución espacial: 10M</div>
                       <div className="text-slate-450 leading-tight block truncate">BANDA 3 (V) / BANDA 8 (V-IR)</div>
                     </div>
 
                     <div className="absolute bottom-3 right-3 bg-slate-950/90 border border-slate-800/80 px-2 rounded py-1 text-[9px] font-mono text-slate-450 shadow-lg">
-                      ESCALA GRÁFICA APROX. 1 : 4.500
+                      Escala gráfica aprox. 1 : 4.500
                     </div>
 
                   </div>
@@ -1574,7 +1574,7 @@ export default function HydrologicalAnalysisWidget() {
                   <div className="p-3.5 bg-slate-950/80 border border-slate-850/70 rounded-lg space-y-2.5">
                     <div className="flex justify-between items-center border-b border-slate-900/80 pb-1.5 flex-wrap gap-2">
                       <span className="text-[10px] font-mono font-bold text-sky-400 flex items-center gap-1.5 uppercase tracking-wider">
-                        🧪 ÍNDICE DE CONFIANZA DEL MODELO ESPECTRAL: {selectedBody.oilSlickRisk}%
+                        ÍNDICE DE CONFIANZA DEL MODELO ESPECTRAL: {selectedBody.oilSlickRisk}%
                       </span>
                       <span className="text-[9px] font-mono p-1 rounded bg-slate-900 text-teal-400 uppercase leading-none font-bold">
                         Banda 3 (Green) vs Banda 8 (NIR)
@@ -1629,13 +1629,13 @@ export default function HydrologicalAnalysisWidget() {
                   <div className="p-3.5 rounded-lg border border-amber-500/25 bg-amber-500/10 text-[10.5px] leading-relaxed text-slate-300">
                     <span className="font-bold text-amber-400 block mb-1 flex items-center gap-1.5">
                       <AlertTriangle className="w-4 h-4" />
-                      AVISO DE VALIDACIÓN & CRITERIO DE ACCIÓN REGULATORIO:
+                      Aviso de validación & criterio de acción regulatorio:
                     </span>
                     <p className="mb-2">
-                      <strong>⚠️ FALTA VALIDACIÓN IN-SITU:</strong> A la fecha, este diagnóstico se sustenta en firmas espectrales computadas robóticamente. Para una certificación pericial plena, <strong>falta la validación en terreno</strong> (muestreo físico terrestre de agua, espectrofotometría directa de muestras y calibración local directa por sensor). Las firmas espectrales ópticas poseen márgenes de incertidumbre naturales.
+                      <strong>Falta validación in-situ:</strong> A la fecha, este diagnóstico se sustenta en firmas espectrales computadas robóticamente. Para una certificación pericial plena, <strong>falta la validación en terreno</strong> (muestreo físico terrestre de agua, espectrofotometría directa de muestras y calibración local directa por sensor). Las firmas espectrales ópticas poseen márgenes de incertidumbre naturales.
                     </p>
                     <p>
-                      <strong>📢 EXIGENCIA DE ACCIÓN PREVENTIVA:</strong> No obstante, la concurrencia de estas anomalías de reflectancia hídrica NDWI y los rangos de turbidez observados <strong>ameritan plenamente iniciar una inspección inmediata en terreno</strong> de carácter oficial para descartar o ratificar definitivamente los riesgos críticos y pasivos detallados.
+                      <strong>Exigencia de acción preventiva:</strong> No obstante, la concurrencia de estas anomalías de reflectancia hídrica NDWI y los rangos de turbidez observados <strong>ameritan plenamente iniciar una inspección inmediata en terreno</strong> de carácter oficial para descartar o ratificar definitivamente los riesgos críticos y pasivos detallados.
                     </p>
                   </div>
 
@@ -1690,7 +1690,7 @@ export default function HydrologicalAnalysisWidget() {
                       <span className="text-[11px] font-bold text-slate-200 block">¿Desea archivar o exportar este Informe Preliminar Regulatorio?</span>
                       <p className="text-[10px] text-slate-450 leading-normal">
                         Genera un reporte analítico oficial de monitoreo hídrico a través de un sistema propio listo para guardar en PDF. 
-                        <span className="text-amber-400 block sm:inline sm:ml-1 font-medium">⚠️ Nota de Vista Preliminar: Utilice la opción de descargar si se encuentra dentro del visor integrado (iFrame).</span>
+                        <span className="text-amber-400 block sm:inline sm:ml-1 font-medium">Nota de Vista Preliminar: Utilice la opción de descargar si se encuentra dentro del visor integrado (iFrame).</span>
                       </p>
                     </div>
                   </div>
@@ -1698,22 +1698,22 @@ export default function HydrologicalAnalysisWidget() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pb-0.5">
                     <button
                       onClick={generateHtmlCode}
-                      className="px-3.5 py-2.5 bg-gradient-to-r from-teal-600 to-sky-650 hover:from-teal-500 hover:to-sky-550 font-sans text-[10px] font-bold text-white rounded-lg shadow transition-all duration-150 flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="px-3.5 py-2.5 bg-gradient-to-r from-teal-600 to-sky-650 hover:from-teal-500 hover:to-sky-550 font-sans text-[10px] font-bold text-white rounded-lg shadow transition-colors duration-150 flex items-center justify-center gap-1.5 cursor-pointer"
                       id="btn-download-html-report"
                     >
                       <Download className="w-3.5 h-3.5 text-teal-200" />
-                      <span>DESCARGAR REGISTRO COMPLETO (PDF/HTML)</span>
+                      <span>Descargar registro completo (PDF/HTML)</span>
                     </button>
 
                     <button
                       onClick={() => {
                         window.print();
                       }}
-                      className="px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 font-sans text-[10px] font-bold text-slate-300 rounded-lg border border-slate-800 transition-all duration-150 flex items-center justify-center gap-1.5 cursor-pointer"
+                      className="px-3.5 py-2.5 bg-slate-900 hover:bg-slate-800 font-sans text-[10px] font-bold text-slate-300 rounded-lg border border-slate-800 transition-colors duration-150 flex items-center justify-center gap-1.5 cursor-pointer"
                       id="btn-print-direct"
                     >
                       <FileText className="w-3.5 h-3.5 text-slate-400" />
-                      <span>IMPRIMIR DIRECTO DESDE PESTAÑA</span>
+                      <span>Imprimir directo desde pestaña</span>
                     </button>
                   </div>
                 </div>
@@ -1721,7 +1721,7 @@ export default function HydrologicalAnalysisWidget() {
                 {/* Legal compliance alert banner */}
                 <div className="flex justify-between items-center text-[10px] font-mono text-slate-550 border-t border-slate-850 pt-2 text-[9.5px]">
                   <span>Reporte Generado por Sistema Propio - Lic. Paredes Victor</span>
-                  <span className="font-black text-emerald-400">MONITOREO CONTINUO ACTIVADO</span>
+                  <span className="font-black text-emerald-400">Monitoreo continuo activado</span>
                 </div>
 
               </div>

@@ -254,14 +254,13 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
     <div className="relative">
       {/* Escenario del globo */}
       <section className="relative h-[78vh] min-h-[520px] lg:h-[calc(100vh-0px)] overflow-hidden bg-noche" aria-label="Globo terrestre con focos térmicos de Vaca Muerta">
-        <Globo centro={[-42, -18]} zoom={1.15} onListo={alListo} posicionSelector="left-4 sm:left-8 bottom-24" tituloExport="Focos térmicos en Vaca Muerta" subtituloExport="NASA FIRMS, últimas 48 h" leyendaExport={LEYENDA_INICIO} />
+        <Globo centro={[-42, -18]} zoom={1.15} onListo={alListo} posicionSelector="left-4 sm:left-8 bottom-24" lecturaArriba tituloExport="Focos térmicos en Vaca Muerta" subtituloExport="NASA FIRMS, últimas 48 h" leyendaExport={LEYENDA_INICIO} />
 
         {/* Viñeta para legibilidad */}
         <div className="pointer-events-none absolute inset-0" style={{ background: "radial-gradient(ellipse at center, transparent 45%, rgba(10,22,40,.75) 100%), linear-gradient(to bottom, rgba(10,22,40,.85) 0%, transparent 32%, transparent 78%, rgba(10,22,40,.9) 100%)" }} />
 
         {/* Rótulo cinematográfico */}
         <div className="pointer-events-none absolute left-5 top-5 sm:left-8 sm:top-8 max-w-[34rem]">
-          <p className="flex items-center gap-2 text-xs text-hielo/90"><LogoMarca size={26} animado /> Monitor ambiental satelital</p>
           <AnimatePresence mode="wait">
             <motion.div
               key={actoActual.titulo}
@@ -270,11 +269,14 @@ export default function CentroMando({ irA }: { irA: (r: string) => void }) {
               exit={{ opacity: 0, y: -10, filter: "blur(6px)" }}
               transition={{ duration: 0.6 }}
             >
-              <h1 className="titulo text-5xl sm:text-7xl font-semibold leading-[0.95] text-texto mt-1">{actoActual.titulo}</h1>
-              <p className="text-tenue text-sm sm:text-base mt-2">
-                {actoActual.titulo === "Vaca Muerta" && estado?.estado === "ok"
-                  ? `${focos.length} focos térmicos reales en las últimas 48 h`
-                  : actoActual.detalle}
+              <h1 className="titulo text-5xl sm:text-7xl font-semibold leading-[0.95] tracking-[-0.01em] text-texto">{actoActual.titulo}</h1>
+              <p className="flex items-center gap-2 text-tenue text-sm sm:text-base mt-2">
+                <LogoMarca size={22} animado className="shrink-0" />
+                <span>
+                  {actoActual.titulo === "Vaca Muerta" && estado?.estado === "ok"
+                    ? <>Monitor ambiental satelital · <span className="num text-texto">{focos.length}</span> focos térmicos en las últimas 48 h</>
+                    : actoActual.detalle}
+                </span>
               </p>
             </motion.div>
           </AnimatePresence>

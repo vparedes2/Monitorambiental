@@ -246,8 +246,8 @@ export default function Instalaciones() {
             <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="absolute right-4 bottom-10 w-[320px] max-w-[calc(100%-2rem)] instrumento p-4 z-10">
               <div className="flex justify-between gap-2">
                 <div>
-                  <p className="text-[11px] text-tenue">{sel.tipo}</p>
                   <p className="titulo text-xl font-semibold leading-tight">{sel.titulo}</p>
+                  <p className="text-[11px] text-tenue mt-0.5">{sel.tipo}</p>
                 </div>
                 <button onClick={() => setSel(null)} aria-label="Cerrar" className="text-tenue hover:text-texto"><X className="w-4 h-4" /></button>
               </div>

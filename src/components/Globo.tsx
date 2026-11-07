@@ -116,6 +116,8 @@ interface Props {
   className?: string;
   /** Clases de posición del selector de mapa base */
   posicionSelector?: string;
+  /** Lectura de coordenadas arriba (cuando abajo hay otra barra) */
+  lecturaArriba?: boolean;
   /** Título y leyenda de la lámina PNG exportada */
   tituloExport?: string;
   subtituloExport?: string;
@@ -123,7 +125,7 @@ interface Props {
 }
 
 /** Globo terrestre con imágenes satelitales reales (MapLibre, proyección globo) */
-export default function Globo({ centro, zoom, interactivo = true, onListo, className, posicionSelector, tituloExport, subtituloExport, leyendaExport }: Props) {
+export default function Globo({ centro, zoom, interactivo = true, onListo, className, posicionSelector, lecturaArriba, tituloExport, subtituloExport, leyendaExport }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const mapRef = useRef<MLMap | null>(null);
   const [baseId, setBaseId] = useState<string>(leerBase);
@@ -256,7 +258,75 @@ export default function Globo({ centro, zoom, interactivo = true, onListo, class
           {aviso && <p className="mt-1.5 max-w-xs text-[11px] text-llama bg-noche/85 px-2 py-1">{aviso}</p>}
         </div>
       )}
+      {interactivo && <LecturaCursor mapRef={mapRef} arriba={lecturaArriba} />}
     </div>
+  );
+}
+
+const fmtGrado = (v: number, pos: string, neg: string) => `${Math.abs(v).toFixed(5)}° ${v >= 0 ? pos : neg}`;
+
+/**
+ * Lectura de coordenadas bajo el cursor (solo con puntero fino). Se actualiza
+ * escribiendo el texto directo en el DOM, sin re-renderizar React en cada movimiento.
+ * Un clic copia "lat, lon" para pegarlo en un informe.
+ */
+function LecturaCursor({ mapRef, arriba }: { mapRef: React.MutableRefObject<MLMap | null>; arriba?: boolean }) {
+  const lat = useRef<HTMLSpanElement>(null);
+  const lon = useRef<HTMLSpanElement>(null);
+  const zoom = useRef<HTMLSpanElement>(null);
+  const ultimo = useRef<{ lat: number; lng: number } | null>(null);
+  const [visible, setVisible] = useState(false);
+  const [copiado, setCopiado] = useState(false);
+  const fino = typeof window !== "undefined" && window.matchMedia?.("(hover: hover) and (pointer: fine)").matches;
+
+  useEffect(() => {
+    if (!fino) return;
+    let map: MLMap | null = null;
+    let raf = 0;
+    const mover = (e: maplibregl.MapMouseEvent) => {
+      ultimo.current = e.lngLat;
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        const p = ultimo.current;
+        if (!p || !lat.current || !lon.current || !zoom.current || !map) return;
+        lat.current.textContent = fmtGrado(p.lat, "N", "S");
+        lon.current.textContent = fmtGrado(p.lng, "E", "O");
+        zoom.current.textContent = map.getZoom().toFixed(1);
+      });
+      setVisible(true);
+    };
+    const espera = setInterval(() => {
+      if (!mapRef.current) return;
+      clearInterval(espera);
+      map = mapRef.current;
+      map.on("mousemove", mover);
+    }, 200);
+    return () => { clearInterval(espera); cancelAnimationFrame(raf); map?.off("mousemove", mover); };
+  }, [fino, mapRef]);
+
+  if (!fino) return null;
+  const copiar = async () => {
+    const p = ultimo.current;
+    if (!p) return;
+    try {
+      await navigator.clipboard.writeText(`${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`);
+      setCopiado(true);
+      setTimeout(() => setCopiado(false), 1600);
+    } catch { /* sin permiso de portapapeles */ }
+  };
+  return (
+    <button type="button" onClick={copiar} title="Copiar latitud y longitud" aria-label="Copiar las coordenadas bajo el cursor"
+      className={`lectura-cursor ${visible ? "es-visible" : ""} ${arriba ? "top-3 desde-arriba" : "bottom-3"} absolute left-1/2 z-20 hidden md:flex items-center gap-3 px-3 py-1.5 bg-noche/85 border border-linea text-[11px] num text-texto hover:border-hielo`}>
+      <span className="lectura-reticula" aria-hidden="true" />
+      <span ref={lat} className="w-[92px] text-right">—</span>
+      <span ref={lon} className="w-[92px]">—</span>
+      <span className="text-tenue">z <span ref={zoom}>—</span></span>
+      <span className={`lectura-accion ${copiado ? "copiado" : ""}`}>
+        <span className="lectura-copiar text-hielo">Copiar</span>
+        <span className="lectura-ok text-[#7BD88F]">Copiado</span>
+      </span>
+    </button>
   );
 }
 

@@ -53,7 +53,7 @@ export default function SkyEarthPortal({ selectedHotspot }: SkyEarthPortalProps)
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded">
-                PASARELA GIS COMPLEMENTARIA
+                Pasarela gis complementaria
               </span>
               <span className="text-[10.5px] font-mono text-slate-400 flex items-center gap-1">
                 • SkyTruth Alerts & Earth Engine Bridges
@@ -108,7 +108,7 @@ export default function SkyEarthPortal({ selectedHotspot }: SkyEarthPortalProps)
                 href={googleEarthUrl} 
                 target="_blank" 
                 rel="noreferrer"
-                className="flex items-center justify-between p-3 bg-gradient-to-r from-emerald-500/10 to-teal-500/5 hover:from-emerald-500/20 hover:to-teal-500/10 border border-emerald-550/25 rounded-xl transition-all group cursor-pointer"
+                className="flex items-center justify-between p-3 bg-gradient-to-r from-emerald-500/10 to-teal-500/5 hover:from-emerald-500/20 hover:to-teal-500/10 border border-emerald-550/25 rounded-xl transition-colors group cursor-pointer"
                 id="earth-launcher-link"
               >
                 <div className="flex items-center gap-2.5 text-xs font-bold text-slate-205 font-sans">
@@ -122,7 +122,7 @@ export default function SkyEarthPortal({ selectedHotspot }: SkyEarthPortalProps)
                 href={skytruthAlertsUrl} 
                 target="_blank" 
                 rel="noreferrer"
-                className="flex items-center justify-between p-3 bg-gradient-to-r from-sky-500/10 to-sky-500/5 hover:from-sky-500/20 hover:to-sky-500/10 border border-sky-500/25 rounded-xl transition-all group cursor-pointer"
+                className="flex items-center justify-between p-3 bg-gradient-to-r from-sky-500/10 to-sky-500/5 hover:from-sky-500/20 hover:to-sky-500/10 border border-sky-500/25 rounded-xl transition-colors group cursor-pointer"
                 id="skytruth-launcher-link"
               >
                 <div className="flex items-center gap-2.5 text-xs font-bold text-slate-205 font-sans">
@@ -136,7 +136,7 @@ export default function SkyEarthPortal({ selectedHotspot }: SkyEarthPortalProps)
                 href={googleMapsUrl} 
                 target="_blank" 
                 rel="noreferrer"
-                className="flex items-center justify-between p-3 bg-slate-950 hover:bg-slate-900 border border-slate-850 rounded-xl transition-all group cursor-pointer"
+                className="flex items-center justify-between p-3 bg-slate-950 hover:bg-slate-900 border border-slate-850 rounded-xl transition-colors group cursor-pointer"
                 id="maps-launcher-link"
               >
                 <div className="flex items-center gap-2.5 text-xs text-slate-300 font-sans">
@@ -154,7 +154,7 @@ export default function SkyEarthPortal({ selectedHotspot }: SkyEarthPortalProps)
           <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-3">
             <div>
               <span className="text-[10px] uppercase font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2.5 py-0.5 rounded">
-                SIMULADOR DE BANDA ESPECTRAL ESAP-C
+                Simulador de banda espectral esap-c
               </span>
               <p className="text-[11.5px] text-slate-350 mt-2 leading-relaxed">
                 Intercambie los lentes reflectivos para visualizar anomalías térmicas y saturación de derrames químicos en el suelo según el modelo multiespectral de SkyTruth:
@@ -169,7 +169,7 @@ export default function SkyEarthPortal({ selectedHotspot }: SkyEarthPortalProps)
               src="https://images.unsplash.com/photo-1524661135-423995f22d0b?w=600&auto=format&fit=crop&q=80" 
               alt="Vista satelital de Vaca Muerta" 
               referrerPolicy="no-referrer"
-              className={`absolute inset-0 w-full h-full object-cover transition-all duration-1000 ${
+              className={`absolute inset-0 w-full h-full object-cover transition-colors duration-1000 ${
                 activeBand === "natural" 
                   ? "brightness-110 contrast-105 saturate-100" 
                   : activeBand === "infrared" 
@@ -193,7 +193,7 @@ export default function SkyEarthPortal({ selectedHotspot }: SkyEarthPortalProps)
 
             {/* Precise metadata overlay corners */}
             <div className="absolute top-2.5 left-3 text-[9px] font-mono text-slate-200 bg-slate-950/85 px-1.5 py-0.5 rounded border border-slate-800 pointer-events-none z-10">
-              🛰️ SENTINEL-2C / MONITOR
+              Sentinel-2c / monitor
             </div>
             <div className="absolute top-2.5 right-3 text-[9px] font-mono text-emerald-400 bg-slate-950/85 px-1.5 py-0.5 rounded border border-slate-800 pointer-events-none z-10">
               COORDS: [{latitude.toFixed(3)}°, {longitude.toFixed(3)}°]
@@ -222,8 +222,8 @@ export default function SkyEarthPortal({ selectedHotspot }: SkyEarthPortalProps)
                 <div className="w-12 h-12 rounded-full bg-yellow-400/40 blur-md absolute animate-ping" style={{ animationDuration: "3s" }} />
 
                 <div className="absolute bottom-10 left-12 text-center bg-red-950/95 border border-red-550/40 px-2 py-1 rounded shadow-lg">
-                  <p className="text-[8.5px] font-black font-mono text-red-400 tracking-widest">🔥 ANOMALÍA TERMICA GASEOSA</p>
-                  <p className="text-[8px] font-mono text-slate-300">BANDA INFRARROJA ACTIVA</p>
+                  <p className="text-[8.5px] font-black font-mono text-red-400 tracking-widest">Anomalía termica gaseosa</p>
+                  <p className="text-[8px] font-mono text-slate-300">Banda infrarroja activa</p>
                 </div>
               </div>
             )}
@@ -241,7 +241,7 @@ export default function SkyEarthPortal({ selectedHotspot }: SkyEarthPortalProps)
 
                 <div className="absolute inset-0 flex items-center justify-center">
                   <div className="bg-slate-950/95 border border-cyan-500/30 px-2.5 py-1.5 rounded-lg max-w-[210px] text-center shadow-2xl">
-                    <p className="text-[9.5px] font-mono font-bold text-cyan-400 uppercase">TELEMETRÍA SAR ACTIVA</p>
+                    <p className="text-[9.5px] font-mono font-bold text-cyan-400 uppercase">Telemetría sar activa</p>
                     <p className="text-[8px] text-slate-350 mt-0.5">Mapeo electromagnético. Detecta fugas y lodos acumulados.</p>
                   </div>
                 </div>
@@ -257,7 +257,7 @@ export default function SkyEarthPortal({ selectedHotspot }: SkyEarthPortalProps)
             <div className="flex gap-1">
               <button
                 onClick={() => setActiveBand("natural")}
-                className={`px-3 py-1 text-[10px] font-bold rounded-lg font-sans transition-all ${
+                className={`px-3 py-1 text-[10px] font-bold rounded-lg font-sans transition-colors ${
                   activeBand === "natural" 
                     ? "bg-slate-800 text-slate-100 shadow" 
                     : "text-slate-450 hover:text-slate-200"
@@ -268,7 +268,7 @@ export default function SkyEarthPortal({ selectedHotspot }: SkyEarthPortalProps)
               </button>
               <button
                 onClick={() => setActiveBand("infrared")}
-                className={`px-3 py-1 text-[10px] font-bold rounded-lg font-sans transition-all ${
+                className={`px-3 py-1 text-[10px] font-bold rounded-lg font-sans transition-colors ${
                   activeBand === "infrared" 
                     ? "bg-rose-500/10 text-rose-400 border border-rose-500/20" 
                     : "text-slate-450 hover:text-slate-200"
@@ -279,7 +279,7 @@ export default function SkyEarthPortal({ selectedHotspot }: SkyEarthPortalProps)
               </button>
               <button
                 onClick={() => setActiveBand("radar")}
-                className={`px-3 py-1 text-[10px] font-bold rounded-lg font-sans transition-all ${
+                className={`px-3 py-1 text-[10px] font-bold rounded-lg font-sans transition-colors ${
                   activeBand === "radar" 
                     ? "bg-cyan-500/10 text-cyan-400 border border-cyan-500/20" 
                     : "text-slate-450 hover:text-slate-200"

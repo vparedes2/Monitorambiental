@@ -1,6 +1,6 @@
 import React, { Suspense, lazy, useEffect, useState } from "react";
 import { Globe2, Orbit, Flame, Images, FlaskConical, Droplets, Factory } from "lucide-react";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { LogoMarca } from "./components/Logo";
 
 const CentroMando = lazy(() => import("./screens/CentroMando"));
@@ -90,7 +90,7 @@ export default function App() {
           return (
             <a key={r.id} href={`#/${r.id}`} aria-current={activo ? "page" : undefined}
               className={`relative w-[72px] py-2.5 flex flex-col items-center gap-1 text-[11px] ${activo ? "text-hielo" : "text-tenue hover:text-texto"}`}>
-              {activo && <motion.span layoutId="riel-activo" className="absolute left-[-8px] top-2 bottom-2 w-[3px] bg-hielo shadow-[0_0_12px_#8FE3F0]" transition={{ type: "spring", stiffness: 500, damping: 40 }} />}
+              {activo && <motion.span layoutId="riel-activo" className="absolute left-[-8px] top-2 bottom-2 w-[3px] bg-hielo" transition={{ type: "spring", duration: 0.35, bounce: 0.15 }} />}
               <I className="w-5 h-5" strokeWidth={1.6} />
               {r.nombre}
             </a>
@@ -103,25 +103,27 @@ export default function App() {
       </nav>
 
       {/* Barra inferior (móvil) */}
-      <nav aria-label="Pantallas" className="lg:hidden fixed bottom-0 inset-x-0 h-[64px] grid grid-cols-6 border-t border-linea bg-noche/95 backdrop-blur z-50">
+      <nav aria-label="Pantallas" className="lg:hidden fixed bottom-0 inset-x-0 h-[64px] grid grid-cols-7 border-t border-linea bg-noche/95 backdrop-blur z-50 pb-[env(safe-area-inset-bottom)]">
         {RUTAS.map((r) => {
           const activo = ruta === r.id;
           const I = r.icono;
           return (
             <a key={r.id} href={`#/${r.id}`} aria-current={activo ? "page" : undefined}
-              className={`flex flex-col items-center justify-center gap-0.5 text-[11px] ${activo ? "text-hielo" : "text-tenue"}`}>
+              className={`relative flex flex-col items-center justify-center gap-1 text-[10.5px] leading-none ${activo ? "text-hielo" : "text-tenue"}`}>
+              {activo && <span className="absolute top-0 inset-x-3 h-[2px] bg-hielo" />}
               <I className="w-5 h-5" strokeWidth={1.6} />
-              {r.corto ?? r.nombre}
+              <span className="truncate max-w-full px-0.5">{r.corto ?? r.nombre}</span>
             </a>
           );
         })}
       </nav>
 
+      {/* Barrido de telemetría al cambiar de pantalla */}
+      <div key={`barrido-${ruta}`} className="barrido-ruta" aria-hidden="true" />
       <main>
         <Resguardo clave={ruta}>
         <Suspense fallback={<Cargando />}>
-          <AnimatePresence mode="wait">
-          <motion.div key={ruta} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} transition={{ duration: 0.25 }}>
+          <div key={ruta} className="entrada-pantalla">
           {ruta === "inicio" && <CentroMando irA={irA} />}
           {ruta === "orbitas" && <Orbitas />}
           {ruta === "instalaciones" && <Instalaciones />}
@@ -129,8 +131,7 @@ export default function App() {
           {ruta === "suelo" && <SueloAgua />}
           {ruta === "catalogo" && <Imagenes />}
           {ruta === "demo" && <TableroDemo vista="general" />}
-          </motion.div>
-          </AnimatePresence>
+          </div>
         </Suspense>
         </Resguardo>
       </main>

@@ -147,7 +147,7 @@ export default function GHGSatSpectraWidget({ selectedHotspot }: GHGSatSpectraWi
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-[10px] font-mono font-bold text-cyan-400 bg-cyan-500/10 px-2.5 py-0.5 rounded">
-                TELEMETRÍA GHGSat CONSTELLATION
+                Telemetría ghgsat CONSTELLATION
               </span>
               <span className="text-[10.5px] font-mono text-slate-400 flex items-center gap-1">
                 • Espectroscopía SWIR de Alta Resolución (25m)
@@ -167,7 +167,7 @@ export default function GHGSatSpectraWidget({ selectedHotspot }: GHGSatSpectraWi
               <button
                 key={sat.id}
                 onClick={() => setSelectedSatelliteId(sat.id)}
-                className={`px-3 py-1 text-[10.5px] font-semibold rounded-lg font-mono transition-all uppercase ${
+                className={`px-3 py-1 text-[10.5px] font-semibold rounded-lg font-mono transition-colors uppercase ${
                   isSelected 
                     ? "bg-cyan-500 text-slate-950 font-bold shadow" 
                     : "text-slate-405 hover:text-slate-200"
@@ -238,7 +238,7 @@ export default function GHGSatSpectraWidget({ selectedHotspot }: GHGSatSpectraWi
                 
                 {/* SVG Visual Simulator Grid representing the localized plume plume length & vector */}
                 <div className="md:col-span-5 bg-slate-955 rounded-xl border border-slate-800 p-2.5 flex items-center justify-center relative overflow-hidden">
-                  <div className="absolute top-1 left-2 text-[8px] font-mono text-slate-505">ANÁLISIS DE INTERFERÓMETRO</div>
+                  <div className="absolute top-1 left-2 text-[8px] font-mono text-slate-505">Análisis de interferómetro</div>
                   
                   {/* Stylized background coordinate grids */}
                   <div className="absolute inset-0 bg-[linear-gradient(to_right,rgba(255,255,255,0.015)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.015)_1px,transparent_1px)] bg-[size:16px_16px]" />
@@ -333,7 +333,7 @@ export default function GHGSatSpectraWidget({ selectedHotspot }: GHGSatSpectraWi
           <div className="flex flex-col sm:flex-row justify-between items-start gap-4 mb-4" id="spectrograh-top-bar">
             <div>
               <span className="text-[10px] uppercase font-mono font-bold text-cyan-400 bg-cyan-500/10 px-2.5 py-0.5 rounded">
-                ESPECTRO METANO (SWIR 1630nm - 1680nm)
+                Espectro metano (SWIR 1630nm - 1680nm)
               </span>
               <p className="text-xs text-slate-300 leading-relaxed mt-2">
                 Ajuste la longitud de onda de escaneo para evaluar la selectividad del filtro y la profundidad de absorbancia. Las caídas pronunciadas denotan una mayor retención de energía por radicales CH₄ en la tropósfera de Vaca Muerta.
@@ -351,7 +351,7 @@ export default function GHGSatSpectraWidget({ selectedHotspot }: GHGSatSpectraWi
           {/* Interactive Spectral transmission Chart rendered in pure SVG */}
           <div className="bg-slate-955 rounded-xl border border-slate-850 p-4 relative">
             <div className="flex justify-between items-center text-[9px] font-mono text-slate-505 mb-2.5">
-              <span>🎚️ CURVA DE ATENUACIÓN DEL SENSOR DE ADQUISICIÓN</span>
+              <span>Curva de atenuación del sensor de adquisición</span>
               <span className="text-teal-400 flex items-center gap-1">• Foco de Metano: {selectedHotspot?.ch4Value?.toFixed(2) || "1.85"} ppm</span>
             </div>
 
@@ -390,7 +390,7 @@ export default function GHGSatSpectraWidget({ selectedHotspot }: GHGSatSpectraWi
                   stroke="#22d3ee"
                   strokeWidth="2.5"
                   strokeLinecap="round"
-                  className="transition-all duration-300"
+                  className="transition-colors duration-300"
                 />
 
                 {/* Area shade matching the transmission line */}
@@ -405,7 +405,7 @@ export default function GHGSatSpectraWidget({ selectedHotspot }: GHGSatSpectraWi
                   })()}
                   fill="url(#transmission-gradient)"
                   opacity="0.12"
-                  className="transition-all duration-300"
+                  className="transition-colors duration-300"
                 />
 
                 {/* Interactive cursor line corresponding to the slider wavelength */}
@@ -465,7 +465,7 @@ export default function GHGSatSpectraWidget({ selectedHotspot }: GHGSatSpectraWi
             
             <div className="flex justify-between items-center text-[9px] font-mono text-slate-505 pt-1">
               <span>Min: 1630nm</span>
-              <span className="text-amber-400/80">⚠️ Mayor captación de ráfegas en 1666nm</span>
+              <span className="text-amber-400/80">Mayor captación de ráfegas en 1666nm</span>
               <span>Max: 1680nm</span>
             </div>
           </div>

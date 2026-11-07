@@ -62,11 +62,11 @@ export default function HistoricalAnalysisWidget({ selectedHotspot, onSelectHots
         <div>
           <div className="flex items-center gap-2">
             <span className="p-1 px-2 text-[9px] font-bold text-indigo-400 bg-indigo-500/10 border border-indigo-500/20 rounded font-mono">
-              HISTÓRICOS & BIG DATA
+              Históricos & big data
             </span>
             <div className="flex items-center gap-1.5 text-[10px] text-emerald-400 font-mono">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
-              <span>ALG_CAMBIO: ACTIVE</span>
+              <span>ALG_Cambio: active</span>
             </div>
           </div>
           <h3 className="text-base font-black text-slate-100 font-sans mt-0.5">
@@ -76,7 +76,7 @@ export default function HistoricalAnalysisWidget({ selectedHotspot, onSelectHots
 
         <button
           onClick={() => setAutoDetectionsEnabled(!autoDetectionsEnabled)}
-          className={`px-3 py-1.5 rounded-lg border text-[11px] font-mono transition-all flex items-center gap-1.5 ${
+          className={`px-3 py-1.5 rounded-lg border text-[11px] font-mono transition-colors flex items-center gap-1.5 ${
             autoDetectionsEnabled 
               ? "bg-teal-500/10 border-teal-500 text-teal-300"
               : "bg-slate-900 border-slate-800 text-slate-500"
@@ -120,13 +120,13 @@ export default function HistoricalAnalysisWidget({ selectedHotspot, onSelectHots
       {selectedHotspot && (
         <div className="space-y-4 pt-2">
           <div className="flex justify-between items-center bg-slate-950 px-4 py-3 rounded-xl border border-slate-850">
-            <span className="text-xs text-slate-400 font-mono">SELECCIÓN DE LÍNEA TEMPORAL SENSOR:</span>
+            <span className="text-xs text-slate-400 font-mono">Selección de línea temporal sensor:</span>
             <div className="flex gap-2 font-mono text-xs">
               {[2024, 2025, 2026].map(yr => (
                 <button
                   key={yr}
                   onClick={() => setSelectedTimelineYear(yr)}
-                  className={`px-3.5 py-1 rounded-md border font-bold transition-all ${
+                  className={`px-3.5 py-1 rounded-md border font-bold transition-colors ${
                     selectedTimelineYear === yr
                       ? "bg-indigo-600 border-indigo-500 text-white shadow-lg shadow-indigo-950/40 scale-105"
                       : "bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200"
@@ -200,7 +200,7 @@ export default function HistoricalAnalysisWidget({ selectedHotspot, onSelectHots
           <div className="pt-2 border-t border-slate-850">
             <div className="flex justify-between items-center mb-3">
               <span className="text-xs font-bold text-slate-400 font-mono tracking-wider">
-                📈 EVOLUCIÓN HISTÓRICA DE AGREGACIÓN & CRECIMIENTO DE SUELO CONTAMINADO
+                Evolución histórica de agregación & crecimiento de suelo contaminado
               </span>
               <span className="text-[10px] text-rose-400 uppercase font-mono font-black flex items-center gap-1">
                 <AlertTriangle className="w-3 h-3 text-rose-400 shrink-0" />
@@ -222,7 +222,7 @@ export default function HistoricalAnalysisWidget({ selectedHotspot, onSelectHots
                         {rec.surfaceArea} m²
                       </span>
                       <div 
-                        className={`w-full rounded-t-md transition-all duration-500 ${
+                        className={`w-full rounded-t-md transition-colors duration-500 ${
                           isCurrent 
                             ? "bg-gradient-to-t from-indigo-600/80 to-indigo-400 border-t border-indigo-300 shadow-md shadow-indigo-900" 
                             : "bg-slate-800 hover:bg-slate-700"

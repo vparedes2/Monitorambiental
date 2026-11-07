@@ -133,8 +133,8 @@ export default function Orbitas() {
       <aside className="lg:w-[380px] lg:overflow-y-auto border-l border-linea bg-panel/60">
         {elegido && posEleg && (
           <div className="p-5 border-b border-linea">
-            <p className="text-xs text-tenue">{elegido.rol}, instrumento {elegido.instrumento}</p>
-            <h2 className="titulo text-3xl font-semibold mt-0.5" style={{ color: COLOR[elegido.instrumento] }}>{elegido.nombre}</h2>
+            <h2 className="titulo text-3xl font-semibold" style={{ color: COLOR[elegido.instrumento] }}>{elegido.nombre}</h2>
+            <p className="text-xs text-tenue mt-0.5">{elegido.rol}, instrumento {elegido.instrumento}</p>
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 mt-4">
               <Dato k="Altitud" v={`${posEleg.altKm.toFixed(0)} km`} />
               <Dato k="Velocidad" v={`${(posEleg.velKms * 3600).toLocaleString("es-AR", { maximumFractionDigits: 0 })} km/h`} />

@@ -106,10 +106,10 @@ export default function TableroDemo({ vista }: { vista: "general" | "venteos" })
         </div>
       </div>
       <header className="max-w-7xl mx-auto px-4 mt-6" id="critical-hotspots-selection">
-        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl relative transition-all">
+        <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl relative transition-colors">
           <button
             onClick={() => setIsSelectorOpen(!isSelectorOpen)}
-            className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-teal-950/15 via-slate-900 to-slate-900 hover:bg-slate-850/60 transition-all text-left"
+            className="w-full flex items-center justify-between p-4 bg-gradient-to-r from-teal-950/15 via-slate-900 to-slate-900 hover:bg-slate-850/60 transition-colors text-left"
             id="toggle-selector-button"
             type="button"
           >
@@ -119,7 +119,7 @@ export default function TableroDemo({ vista }: { vista: "general" | "venteos" })
               </div>
               <div>
                 <h2 className="text-[10px] font-black text-teal-400 tracking-wider uppercase font-mono mb-0.5">
-                  🚨 SENSOR FILTRADOR DE YACIMIENTOS
+                  Sensor filtrador de yacimientos
                 </h2>
                 <h3 className="text-sm font-extrabold text-slate-150 font-sans tracking-tight">
                   {isSelectorOpen ? "Selección de Yacimientos Activos Vaca Muerta" : `Yacimiento Activo: ${
@@ -144,7 +144,7 @@ export default function TableroDemo({ vista }: { vista: "general" | "venteos" })
           {isSelectorOpen ? (
             <div className="p-5 border-t border-slate-800 bg-slate-950/20 space-y-4">
               <p className="text-xs text-slate-350 leading-relaxed max-w-4xl">
-                <strong>💡 Interactividad de Telemetría:</strong> Al presionar cualquier foco de la lista inferior, el sistema re-calibra de inmediato los mapas satelitales, sensores de gases, simulación de viento y ejecuta una auditoría de mitigación de IA en tiempo real.
+                <strong>Interactividad de Telemetría:</strong> Al presionar cualquier foco de la lista inferior, el sistema re-calibra de inmediato los mapas satelitales, sensores de gases, simulación de viento y ejecuta una auditoría de mitigación de IA en tiempo real.
               </p>
               
               {/* Quick selectors matching hotspots presets */}
@@ -157,7 +157,7 @@ export default function TableroDemo({ vista }: { vista: "general" | "venteos" })
                     <button
                       key={preset.id}
                       onClick={() => handleSelectHotspot(preset)}
-                      className={`text-left p-3.5 rounded-xl border transition-all duration-300 relative ${
+                      className={`text-left p-3.5 rounded-xl border transition-colors duration-300 relative ${
                         isActive 
                           ? "bg-slate-900 border-teal-400 ring-2 ring-teal-400/25 shadow-xl shadow-teal-555/10 scale-[1.02]" 
                           : "bg-slate-950/45 border-slate-850 hover:bg-slate-900 hover:border-slate-850 cursor-pointer"
@@ -168,7 +168,7 @@ export default function TableroDemo({ vista }: { vista: "general" | "venteos" })
                       {/* Active monitoring status badge */}
                       {isActive && (
                         <div className="absolute -top-2.5 -right-1.5 bg-teal-500 text-slate-950 text-[8px] font-black font-mono px-2 py-0.5 rounded shadow-md uppercase tracking-wider animate-bounce">
-                          📡 ACTIVO
+                          ACTIVO
                         </div>
                       )}
 
@@ -292,7 +292,7 @@ export default function TableroDemo({ vista }: { vista: "general" | "venteos" })
           <div className="flex flex-col md:flex-row justify-between md:items-center gap-4">
             <div>
               <h3 className="text-xs font-bold text-teal-400 font-mono uppercase tracking-wider mb-0.5">
-                ORGANIZACIÓN DE TELEMETRÍA SUBESPECIALIZADA
+                Organización de telemetría subespecializada
               </h3>
               <h2 className="text-base font-extrabold text-slate-100 font-sans">
                 Ejes Sensoriales: Aire, Agua y Suelo
@@ -306,14 +306,14 @@ export default function TableroDemo({ vista }: { vista: "general" | "venteos" })
             <div className="flex gap-2 shrink-0">
               <button 
                 onClick={() => { setIsAirOpen(true); setIsWaterOpen(true); setIsSoilOpen(true); }}
-                className="px-3 py-1.5 bg-slate-950 border border-slate-850 hover:border-slate-700 text-[10px] font-bold font-mono text-slate-300 rounded-xl uppercase transition-all"
+                className="px-3 py-1.5 bg-slate-950 border border-slate-850 hover:border-slate-700 text-[10px] font-bold font-mono text-slate-300 rounded-xl uppercase transition-colors"
                 type="button"
               >
                 Expandir Todo [ + ]
               </button>
               <button 
                 onClick={() => { setIsAirOpen(false); setIsWaterOpen(false); setIsSoilOpen(false); }}
-                className="px-3 py-1.5 bg-slate-950 border border-slate-850 hover:border-slate-700 text-[10px] font-bold font-mono text-slate-400 rounded-xl uppercase transition-all"
+                className="px-3 py-1.5 bg-slate-950 border border-slate-850 hover:border-slate-700 text-[10px] font-bold font-mono text-slate-400 rounded-xl uppercase transition-colors"
                 type="button"
               >
                 Colapsar Todo [ - ]
@@ -326,7 +326,7 @@ export default function TableroDemo({ vista }: { vista: "general" | "venteos" })
         <div className="bg-slate-900/40 border border-slate-850 rounded-2xl overflow-hidden shadow-md" id="air-collapsible-container">
           <button
             onClick={() => setIsAirOpen(!isAirOpen)}
-            className="w-full flex items-center justify-between p-5 bg-gradient-to-r from-cyan-950/20 to-teal-950/10 hover:bg-slate-905 transition-all text-left group"
+            className="w-full flex items-center justify-between p-5 bg-gradient-to-r from-cyan-950/20 to-teal-950/10 hover:bg-slate-905 transition-colors text-left group"
             type="button"
           >
             <div className="flex items-center gap-3">
@@ -335,7 +335,7 @@ export default function TableroDemo({ vista }: { vista: "general" | "venteos" })
               </div>
               <div>
                 <h4 className="text-sm font-black tracking-wide text-slate-200 font-sans flex items-center gap-2">
-                  🌬️ EJE AIRE Y TELEMETRÍA ATMOSFÉRICA
+                  Eje aire y telemetría atmosférica
                   <span className="text-[9.5px] font-mono text-cyan-400 bg-cyan-950 px-2 py-0.5 rounded font-bold uppercase border border-cyan-900/20">
                     2 Componentes
                   </span>
@@ -369,7 +369,7 @@ export default function TableroDemo({ vista }: { vista: "general" | "venteos" })
         <div className="bg-slate-900/40 border border-slate-850 rounded-2xl overflow-hidden shadow-md" id="water-collapsible-container">
           <button
             onClick={() => setIsWaterOpen(!isWaterOpen)}
-            className="w-full flex items-center justify-between p-5 bg-gradient-to-r from-blue-950/20 to-cyan-950/10 hover:bg-slate-905 transition-all text-left group"
+            className="w-full flex items-center justify-between p-5 bg-gradient-to-r from-blue-950/20 to-cyan-950/10 hover:bg-slate-905 transition-colors text-left group"
             type="button"
           >
             <div className="flex items-center gap-3">
@@ -378,7 +378,7 @@ export default function TableroDemo({ vista }: { vista: "general" | "venteos" })
               </div>
               <div>
                 <h4 className="text-sm font-black tracking-wide text-slate-200 font-sans flex items-center gap-2">
-                  💧 EJE AGUA, ACUÍFEROS Y CUENCAS HIDROLÓGICAS
+                  Eje agua, Acuíferos y cuencas hidrológicas
                   <span className="text-[9.5px] font-mono text-blue-400 bg-blue-950 px-2 py-0.5 rounded font-bold uppercase border border-blue-900/20">
                     Activo
                   </span>
@@ -408,7 +408,7 @@ export default function TableroDemo({ vista }: { vista: "general" | "venteos" })
         <div className="bg-slate-900/40 border border-slate-855 rounded-2xl overflow-hidden shadow-md" id="soil-collapsible-container">
           <button
             onClick={() => setIsSoilOpen(!isSoilOpen)}
-            className="w-full flex items-center justify-between p-5 bg-gradient-to-r from-emerald-950/20 to-amber-950/10 hover:bg-slate-905 transition-all text-left group"
+            className="w-full flex items-center justify-between p-5 bg-gradient-to-r from-emerald-950/20 to-amber-950/10 hover:bg-slate-905 transition-colors text-left group"
             type="button"
           >
             <div className="flex items-center gap-3">
@@ -417,7 +417,7 @@ export default function TableroDemo({ vista }: { vista: "general" | "venteos" })
               </div>
               <div>
                 <h4 className="text-sm font-black tracking-wide text-slate-200 font-sans flex items-center gap-2">
-                  🪵 EJE SUELO, MONITOREO GEOGRÁFICO Y AUDITORÍA GENERAL
+                  Eje suelo, Monitoreo geográfico y auditoría general
                   <span className="text-[9.5px] font-mono text-emerald-400 bg-emerald-950 px-2 py-0.5 rounded font-bold uppercase border border-emerald-900/20">
                     4 Componentes
                   </span>

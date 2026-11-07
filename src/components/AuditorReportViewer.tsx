@@ -78,7 +78,7 @@ const drawSatelliteSimulation = (
 
   ctx.font = "bold 6.5px sans-serif";
   ctx.fillStyle = "rgba(56, 189, 248, 0.85)";
-  ctx.fillText("🌊 RECURSO HÍDRICO PROTEGIDO (RÍO NEUQUÉN / MARGEN CRÍTICO)", 40, 255);
+  ctx.fillText("RECURSO HÍDRICO PROTEGIDO (RÍO NEUQUÉN / MARGEN CRÍTICO)", 40, 255);
 
   // Draw Ruta Provincial 7 (Major asphalt arterial corridor)
   ctx.strokeStyle = "rgba(244, 63, 94, 0.4)";
@@ -104,7 +104,7 @@ const drawSatelliteSimulation = (
   ctx.fill();
   ctx.font = "bold 7px sans-serif";
   ctx.fillStyle = "#ffffff";
-  ctx.fillText("📍 AÑELO CENTRAL (CASCO URBANO)", aneloX - 60, aneloY - 8);
+  ctx.fillText("AÑELO CENTRAL (CASCO URBANO)", aneloX - 60, aneloY - 8);
 
   ctx.strokeStyle = "rgba(100, 116, 139, 0.22)";
   ctx.lineWidth = 1;
@@ -448,7 +448,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
 
 
     // ==========================================
-    // PAGE 1: DIAGNÓSTICO ESPECTRAL Y PUNTOS DE REFERENCIA
+    // PAGE 1: Diagnóstico espectral y puntos de referencia
     // ==========================================
     drawPageDecoration(1);
     let y = 38;
@@ -513,7 +513,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
     doc.text(splitDesc, 14, y);
     y += splitDesc.length * 4.5 + 8;
 
-    // 3. TABLA DE COORDENADAS Y PUNTOS DE REFERENCIA
+    // 3. Tabla de coordenadas y puntos de referencia
     doc.setFillColor(13, 148, 136);
     doc.rect(14, y, 3, 6, "F");
     doc.setFont("helvetica", "bold");
@@ -560,13 +560,13 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
     doc.setFont("helvetica", "bold");
     doc.setFontSize(8.5);
     doc.setTextColor(100, 116, 139);
-    doc.text("🛡️ Nota Legal:", 14, y);
+    doc.text("Nota Legal:", 14, y);
     doc.setFont("helvetica", "normal");
     doc.text(`La vialidad afectada de forma periférica en el radio de contingencia es la del corredor: ${distRuta}.`, 38, y);
 
 
     // ==========================================
-    // PAGE 2: MAPA SATELITAL Y VECTOR DE VIENTOS (WINDY)
+    // PAGE 2: Mapa satelital y vector de vientos (WINDY)
     // ==========================================
     doc.addPage();
     drawPageDecoration(2);
@@ -621,7 +621,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
 
 
     // ==========================================
-    // PAGE 3: EVALUACIÓN DE SALUD PÚBLICA, TOXICOLOGÍA Y PROTOCOLO
+    // PAGE 3: Evaluación de salud pública, Toxicología y protocolo
     // ==========================================
     doc.addPage();
     drawPageDecoration(3);
@@ -761,7 +761,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
       <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-3 border-b border-slate-800/85 pb-4 mb-5">
         <div>
           <span className="text-[10px] font-bold text-teal-400 tracking-widest uppercase font-mono block">
-            RESULTADO DE AUDITORÍA REGULATORIA
+            Resultado de auditoría regulatoria
           </span>
           <h2 className="text-xl font-black text-slate-100 font-sans tracking-tight mt-0.5">
             Reporte de Riesgo HSE Vaca Muerta
@@ -771,7 +771,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
           <div className="flex flex-wrap gap-2 self-start sm:self-auto font-mono text-xs">
             <button
               onClick={handleDownloadPDF}
-              className="px-3 py-1.5 rounded-lg border border-teal-500 bg-teal-500/15 hover:bg-teal-500 hover:text-slate-950 font-bold transition-all flex items-center gap-1.5 cursor-pointer text-teal-400 shadow-lg shadow-teal-500/10"
+              className="px-3 py-1.5 rounded-lg border border-teal-500 bg-teal-500/15 hover:bg-teal-500 hover:text-slate-950 font-bold transition-colors flex items-center gap-1.5 cursor-pointer text-teal-400 shadow-lg shadow-teal-500/10"
               id="download-pdf-btn"
             >
               <FileDown className="w-3.5 h-3.5" />
@@ -779,7 +779,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
             </button>
             <button
               onClick={() => setShowRawJson(prev => !prev)}
-              className={`px-3 py-1.5 rounded-lg border transition-all flex items-center gap-1.5 ${
+              className={`px-3 py-1.5 rounded-lg border transition-colors flex items-center gap-1.5 ${
                 showRawJson 
                   ? "bg-slate-800 border-slate-700 text-slate-200" 
                   : "bg-slate-900/30 border-slate-800 text-slate-400 hover:border-slate-750"
@@ -791,7 +791,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
             </button>
             <button
               onClick={handleCopy}
-              className="px-3 py-1.5 rounded-lg border bg-slate-900/30 border-slate-800 text-slate-400 hover:border-slate-750 transition-all flex items-center gap-1.5"
+              className="px-3 py-1.5 rounded-lg border bg-slate-900/30 border-slate-800 text-slate-400 hover:border-slate-750 transition-colors flex items-center gap-1.5"
               id="copy-json-btn"
             >
               {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
@@ -851,7 +851,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
               <Info className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
               <div>
                 <p className="font-bold text-amber-200">
-                  ⚠️ CIRCUITO AUXILIAR DE RESPALDO DE TELEDETECCIÓN ACTIVADO
+                  Circuito auxiliar de respaldo de teledetección activado
                 </p>
                 <p className="text-slate-350 text-[11px] mt-1 leading-normal">
                   Debido a saturación o agotamiento temporal en la cuota de la clave API de Google Gemini en Incidentes, el puente del Monitor de Vaca Muerta ha activado el circuito local calibrado. Está visualizando simulaciones hidrológicas y ambientales de alta fidelidad técnica basadas en normativas provinciales de Neuquén de forma transparente.
@@ -866,7 +866,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
             <div className={`p-4 rounded-xl border ${getRiskBadgeColor(report.evaluacion_hse.nivel_riesgo)}`}>
               <div className="flex justify-between items-center mb-1">
                 <span className="text-[10px] font-bold uppercase tracking-wider font-mono opacity-80">
-                  NIVEL DE RIESGO EVALUADO
+                  Nivel de riesgo evaluado
                 </span>
                 {getRiskIcon(report.evaluacion_hse.nivel_riesgo)}
               </div>
@@ -878,7 +878,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
             {/* Certainty factor */}
             <div className="p-4 rounded-xl border border-slate-800 bg-slate-900/60 text-slate-200">
               <span className="text-[10px] font-semibold text-slate-400 tracking-wider font-mono block mb-1">
-                CERTEZA DEL ANÁLISIS DE TELEDETECCIÓN
+                Certeza del análisis de teledetección
               </span>
               <p className="text-2xl font-black font-sans uppercase text-slate-100 tracking-tight">
                 {report.foco_detectado.certeza_analisis}
@@ -889,7 +889,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
           {/* Incident identification block */}
           <div className="space-y-2 border-l-2 border-teal-500 pl-4 py-1 bg-teal-500/5">
             <span className="text-[10px] font-bold text-teal-400 tracking-wider font-mono block">
-              IDENTIFICACIÓN DEL FOCO CONTAMINANTE
+              Identificación del foco contaminante
             </span>
             <h4 className="text-base font-bold text-slate-100 font-sans">
               Categoría: <span className="text-slate-200 underline decoration-teal-500">{report.foco_detectado.tipo_contaminación}</span>
@@ -925,13 +925,13 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
           {/* Affected core assets / resources */}
           <div className="bg-slate-950 border border-slate-850 p-4 rounded-xl space-y-1.5">
             <span className="text-[10px] font-bold text-red-400 tracking-wider font-mono block">
-              RECURSOS ESPECÍFICOS COMPROMETIDOS
+              Recursos específicos comprometidos
             </span>
             <p className="text-xs text-slate-300 leading-relaxed font-sans font-medium">
-              ❌ <span className="text-slate-100 font-bold">Zonas de riesgo inmediato:</span> {report.evaluacion_hse.poblacion_o_recurso_afectado}
+              <span className="text-slate-100 font-bold">Zonas de riesgo inmediato:</span> {report.evaluacion_hse.poblacion_o_recurso_afectado}
             </p>
             <p className="text-xs text-slate-400 leading-relaxed border-t border-slate-900 pt-1.5 mt-1.5">
-              💡 <span className="text-slate-300 font-bold">Comentario de Superficie:</span> {report.evaluacion_hse.superficie_analizada_nota}
+              <span className="text-slate-300 font-bold">Comentario de Superficie:</span> {report.evaluacion_hse.superficie_analizada_nota}
             </p>
           </div>
 
@@ -943,7 +943,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
               </div>
               <div>
                 <span className="text-[9px] font-black text-amber-500 tracking-widest uppercase font-mono block">
-                  AUDITORÍA MÉDICO-AMBIENTAL (HSE)
+                  Auditoría médico-ambiental (HSE)
                 </span>
                 <h4 className="text-xs font-bold text-slate-100 font-sans">
                   Evaluación de Riesgos en la Salud de la Población
@@ -960,7 +960,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
               {/* Dynamic Health Warning Indicator or Guide */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1.5">
                 <div className="p-2 bg-slate-950/80 rounded border border-slate-800 space-y-1">
-                  <span className="text-[8.5px] font-bold text-slate-500 font-mono block">🎯 VÍAS DE EXPOSICIÓN CLAVE</span>
+                  <span className="text-[8.5px] font-bold text-slate-500 font-mono block">Vías de exposición clave</span>
                   <p className="text-[10px] text-amber-400 font-sans leading-relaxed whitespace-pre-line">
                     {report.foco_detectado.tipo_contaminación.includes("Derrame") || report.foco_detectado.tipo_contaminación.includes("lodos")
                       ? "• Ingestión hídrica de agua rural\n• Absorción dérmica directa"
@@ -968,7 +968,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
                   </p>
                 </div>
                 <div className="p-2 bg-slate-950/80 rounded border border-slate-800 space-y-1">
-                  <span className="text-[8.5px] font-bold text-slate-500 font-mono block">🩺 SINTOMATOLOGÍA PREVENTIVA</span>
+                  <span className="text-[8.5px] font-bold text-slate-500 font-mono block">Sintomatología preventiva</span>
                   <p className="text-[10px] text-rose-400 font-sans leading-relaxed whitespace-pre-line">
                     {report.foco_detectado.tipo_contaminación.includes("Derrame") || report.foco_detectado.tipo_contaminación.includes("lodos")
                       ? "• Toxicidad acumulativa sistémica\n• Deterioro en ganado rural linderos"
@@ -991,7 +991,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
           <div className="space-y-3 pt-2">
             <div className="flex justify-between items-center border-b border-slate-850 pb-1">
               <span className="text-xs font-bold text-slate-400 tracking-wider uppercase font-mono">
-                PLAN DE ACCIÓN REGULATORIO RECOMENDADO:
+                Plan de acción regulatorio recomendado:
               </span>
               <span className="text-[10px] text-teal-400 font-mono">
                 {Object.values(checkedActions).filter(Boolean).length} de {report.plan_accion_sugerido?.length || 3} completadas
@@ -1004,7 +1004,7 @@ export default function AuditorReportViewer({ report, loading, selectedHotspot }
                   <div 
                     key={idx} 
                     onClick={() => toggleAction(idx)}
-                    className={`flex items-start gap-3 p-3 rounded-lg border transition-all cursor-pointer select-none ${
+                    className={`flex items-start gap-3 p-3 rounded-lg border transition-colors cursor-pointer select-none ${
                       isChecked 
                         ? "bg-slate-950/40 border-emerald-900/30 text-slate-400" 
                         : "bg-slate-900/20 border-slate-850 hover:bg-slate-900/50 text-slate-200"

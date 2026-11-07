@@ -1,10 +1,9 @@
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;650;700;900&family=JetBrains+Mono:wght@400;500;700;800&family=Space+Grotesk:wght@400;500;700&family=Saira+Condensed:wght@400;500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap');
 @import "tailwindcss";
 
 @theme {
-  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
-  --font-display: "Space Grotesk", sans-serif;
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+  --font-display: "Saira Condensed", "Arial Narrow", sans-serif;
   --font-cond: "Saira Condensed", "Arial Narrow", sans-serif;
   --font-plex: "IBM Plex Sans", ui-sans-serif, sans-serif;
   --font-plexmono: "IBM Plex Mono", ui-monospace, monospace;
@@ -19,27 +18,43 @@
 }
 
 @layer base {
+  :root {
+    /* Movimiento: curvas propias (más decididas que las de CSS) */
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+    --t-press: 120ms;
+    --t-hover: 160ms;
+    --t-panel: 220ms;
+    color-scheme: dark;
+    accent-color: #8FE3F0;
+    caret-color: #8FE3F0;
+  }
   body {
-    background-color: #020617;
+    background-color: #0A1628;
     font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
+  h1, h2, h3 { text-wrap: balance; }
+  p { text-wrap: pretty; }
+  ::selection { background: rgba(255, 138, 61, 0.38); color: #FFF4EA; }
+  * { scrollbar-width: thin; scrollbar-color: #2C4F72 transparent; }
+  ::-webkit-scrollbar { width: 8px; height: 8px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: #22405E; border-radius: 0; border: 2px solid #0A1628; }
+  ::-webkit-scrollbar-thumb:hover { background: #2C4F72; }
+  a { text-underline-offset: 3px; text-decoration-thickness: 1px; }
+  input::placeholder { color: #7F95AC; }
+  /* Presión: todo lo que se toca responde (los marcadores del mapa quedan fuera: MapLibre los posiciona con transform) */
+  :where(button, a[href], [role="button"], summary):not(.maplibregl-marker, :disabled) {
+    transition-property: transform, color, background-color, border-color, opacity;
+    transition-duration: var(--t-press), var(--t-hover), var(--t-hover), var(--t-hover), var(--t-hover);
+    transition-timing-function: var(--ease-out);
+  }
+  :where(button, a[href], [role="button"]):not(.maplibregl-marker, .maplibregl-ctrl button, :disabled):active { transform: scale(0.97); }
 }
 
-@keyframes radar-scan {
-  0% {
-    top: 0%;
-  }
-  50% {
-    top: 100%;
-  }
-  100% {
-    top: 0%;
-  }
-}
-
-.animate-radar {
-  animation: radar-scan 5s linear infinite;
-}
 
 
 @layer components {
@@ -79,9 +94,12 @@
 
 @media (prefers-reduced-motion: reduce) {
   .radar-barrido { animation: none; }
+  :where(button, a[href], [role="button"]):active { transform: none !important; }
+  :focus-visible { animation: none; }
 }
 
-:focus-visible { outline: 2px solid #8FE3F0; outline-offset: 2px; }
+:focus-visible { outline: 2px solid #8FE3F0; outline-offset: 2px; animation: foco-asentar 200ms var(--ease-out); }
+@keyframes foco-asentar { from { outline-offset: 6px; } to { outline-offset: 2px; } }
 
 /* Re-tema de los módulos anteriores con la paleta de la sala */
 .legado {
@@ -121,8 +139,10 @@
 @keyframes trazo { to { stroke-dashoffset: 0; } }
 @keyframes aparecer { to { opacity: 1; } }
 @keyframes latido { 0%,100% { filter: drop-shadow(0 0 0 #FF8A3D); } 50% { filter: drop-shadow(0 0 4px #FF8A3D); } }
-.logo-hover svg { transition: transform .4s ease; }
-.logo-hover:hover svg { transform: rotate(-12deg) scale(1.06); }
+.logo-hover svg { transition: transform 240ms var(--ease-out); }
+@media (hover: hover) and (pointer: fine) {
+  .logo-hover:hover svg { transform: rotate(-8deg) scale(1.04); }
+}
 
 /* ---------- Controles de mapa (zoom, brújula) con la paleta de la sala ---------- */
 .maplibregl-ctrl-group { background: rgba(15,32,53,.9) !important; border: 1px solid #22405E; box-shadow: none !important; border-radius: 2px !important; }
@@ -139,3 +159,68 @@
   .anillo-enfoque { display: none; }
 }
 .maplibregl-ctrl-bottom-right .maplibregl-ctrl-group { margin-bottom: 96px !important; margin-right: 16px !important; }
+
+/* Barrido del portal heredado */
+@keyframes radar-scan { 0%, 100% { top: 0%; } 50% { top: 100%; } }
+.animate-radar { animation: radar-scan 5s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .animate-radar { animation: none; opacity: 0; } }
+
+/* ---------- Cambio de pantalla ---------- */
+/* Contenido: aparece rápido, sin esperar a que salga la anterior (se navega decenas de veces) */
+.entrada-pantalla { animation: entrada-pantalla 180ms var(--ease-out); }
+@keyframes entrada-pantalla { from { opacity: 0; } to { opacity: 1; } }
+/* Firma: una línea de barrido recorre el borde superior, como un instrumento que refresca */
+.barrido-ruta {
+  position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 60; pointer-events: none;
+  background: linear-gradient(90deg, transparent, #8FE3F0 70%, #FFFFFF);
+  clip-path: inset(0 100% 0 0);
+  animation: barrido-ruta 520ms var(--ease-in-out) forwards;
+}
+@keyframes barrido-ruta {
+  0% { clip-path: inset(0 100% 0 0); opacity: 1; }
+  70% { clip-path: inset(0 0 0 0); opacity: 1; }
+  100% { clip-path: inset(0 0 0 100%); opacity: 0; }
+}
+@media (min-width: 1024px) { .barrido-ruta { left: 88px; } }
+@media (prefers-reduced-motion: reduce) {
+  .entrada-pantalla { animation: none; }
+  .barrido-ruta { display: none; }
+}
+
+/* ---------- Lectura de coordenadas bajo el cursor ---------- */
+.lectura-cursor { transform: translate(-50%, 6px); opacity: 0; pointer-events: none; transition: opacity 180ms var(--ease-out), transform 180ms var(--ease-out), border-color 160ms var(--ease-out); }
+.lectura-cursor.es-visible { transform: translate(-50%, 0); opacity: 1; pointer-events: auto; }
+.lectura-cursor:active { transform: translate(-50%, 0) scale(0.97); }
+.lectura-reticula { position: relative; width: 11px; height: 11px; }
+.lectura-reticula::before, .lectura-reticula::after { content: ""; position: absolute; background: #8FE3F0; }
+.lectura-reticula::before { left: 5px; top: 0; width: 1px; height: 11px; }
+.lectura-reticula::after { top: 5px; left: 0; height: 1px; width: 11px; }
+/* Cambio Copiar → Copiado: crossfade con desenfoque para que se lea como un solo objeto que cambia */
+.lectura-accion { display: grid; }
+.lectura-accion > span { grid-area: 1 / 1; transition: opacity 200ms var(--ease-out), filter 200ms var(--ease-out), transform 200ms var(--ease-out); }
+.lectura-ok { opacity: 0; filter: blur(3px); transform: translateY(3px); }
+.lectura-accion.copiado .lectura-copiar { opacity: 0; filter: blur(3px); transform: translateY(-3px); }
+.lectura-accion.copiado .lectura-ok { opacity: 1; filter: blur(0); transform: none; }
+@media (prefers-reduced-motion: reduce) {
+  .lectura-cursor, .lectura-accion > span { transition-property: opacity; filter: none !important; }
+}
+
+/* ---------- Módulo heredado: sin costumbres genéricas ---------- */
+/* Sin mayúsculas forzadas ni tracking abierto: las etiquetas se leen, no gritan */
+.legado .uppercase { text-transform: none; }
+.legado .tracking-wider, .legado .tracking-widest, .legado .tracking-wide { letter-spacing: 0.005em; }
+/* Piso de legibilidad: nada por debajo de 11 px */
+.legado .text-\[7\.5px\], .legado .text-\[8px\], .legado .text-\[8\.5px\], .legado .text-\[9px\], .legado .text-\[9\.5px\], .legado .text-\[10px\] { font-size: 11px; line-height: 1.35; }
+.legado .font-black { font-weight: 600; }
+.legado .font-extrabold { font-weight: 600; }
+/* Sin degradados decorativos ni halos de color: superficies planas de la sala */
+.legado [class*="bg-gradient-to"] { background-image: none !important; background-color: rgba(143, 227, 240, 0.1); }
+.legado [class*="shadow-lg"], .legado [class*="shadow-xl"], .legado [class*="shadow-2xl"], .legado [class*="shadow-["] { box-shadow: 0 6px 18px -8px rgba(0, 0, 0, 0.55) !important; }
+.legado .backdrop-blur-md, .legado .backdrop-blur-sm, .legado .backdrop-blur { backdrop-filter: none; }
+.legado .animate-bounce, .legado .animate-pulse { animation: none; }
+.legado .rounded-lg, .legado .rounded-md, .legado .rounded { border-radius: 2px; }
+/* La monoespaciada queda para datos y coordenadas; botones y etiquetas en la sans de la sala */
+.legado { font-variant-numeric: tabular-nums; }
+.legado button, .legado select, .legado label, .legado .font-mono:not(:where(.num)) { font-family: var(--font-plex); }
+.legado .font-mono:where([class*="text-["], [class*="text-xs"]) { letter-spacing: 0; }
+.lectura-cursor.desde-arriba:not(.es-visible) { transform: translate(-50%, -6px); }

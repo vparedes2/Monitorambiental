@@ -152,9 +152,9 @@ export default function MethodologicalAuditPanel() {
           <div className="flex items-center gap-2 mb-1.5">
             <span className="p-1 px-2.5 rounded bg-amber-500/10 text-amber-400 text-[10px] font-mono font-bold tracking-wider uppercase border border-amber-500/20 flex items-center gap-1.5 animate-pulse">
               <ShieldAlert className="w-3.5 h-3.5" />
-              MARCO COGNITIVO INTEGRAL DE AUDITORÍA
+              Marco cognitivo integral de auditoría
             </span>
-            <span className="text-[10px] text-slate-400 font-mono">NIVEL: PROFESIONAL DEFENSIBLE</span>
+            <span className="text-[10px] text-slate-400 font-mono">Nivel: profesional defensible</span>
           </div>
           <h2 className="text-xl font-black text-slate-100 font-sans tracking-tight">
             Análisis Crítico & Marco Metodológico Multidisciplinario
@@ -169,17 +169,17 @@ export default function MethodologicalAuditPanel() {
       <div className="p-5 rounded-xl border border-amber-500/30 bg-amber-500/10 mb-6 space-y-2.5" id="critical-insitu-alert-banner">
         <div className="flex items-center gap-2.5 text-amber-400 font-bold text-sm">
           <AlertTriangle className="w-5 h-5 shrink-0 animate-bounce text-amber-400" />
-          <span>DECLARACIÓN DE VALIDACIÓN Y CRITERIO DE ACCIÓN REGULATORIO</span>
+          <span>Declaración de validación y criterio de acción regulatorio</span>
         </div>
         <div className="space-y-2 text-xs text-slate-200 leading-relaxed">
           <p>
-            <strong>⚠️ NOTA DE CONTROL CRÍTICO:</strong> A la fecha, este reporte 
-            <span className="text-amber-300 font-black underline bg-amber-900/20 px-1 rounded ml-1 mr-1">FALTA VALIDACIÓN IN-SITU</span> 
+            <strong>Nota de control crítico:</strong> A la fecha, este reporte 
+            <span className="text-amber-300 font-black underline bg-amber-900/20 px-1 rounded ml-1 mr-1">Falta validación in-situ</span> 
             (muestreo físico terrestre, espectrofotometría de campo y calibración directa por sensor piezométrico). Las firmas ópticas y de teledetección poseen un nivel de incertidumbre inherente a los algoritmos empíricos orbitales.
           </p>
           <p className="text-slate-300">
-            <strong>📢 SIN EMBARGO:</strong> Los valores atmosféricos e índices espectrales observados en la presente órbita 
-            <span className="text-emerald-400 font-bold decoration-dotted underline">AMERITAN UNA INSPECCIÓN INMEDIATA EN TERRENO</span>. 
+            <strong>Sin embargo:</strong> Los valores atmosféricos e índices espectrales observados en la presente órbita 
+            <span className="text-emerald-400 font-bold decoration-dotted underline">Ameritan una inspección inmediata en terreno</span>. 
             La confluencia de anomalías en el NDWI, la presencia coincidente de temperaturas elevadas y la acumulación gaseosa detectada por el sensor TROPOMI plantean un nivel de riesgo sustancial para el Río Neuquén y las comunidades linderas (Añelo/Tratayén), justificando de forma técnica y legal la activación de protocolos de contingencia y auditoría HSE acelerada.
           </p>
         </div>
@@ -195,7 +195,7 @@ export default function MethodologicalAuditPanel() {
         <div className="flex flex-wrap gap-2">
           <button
             onClick={() => setActiveRole("all")}
-            className={`px-3 py-1.5 rounded-lg border text-xs font-mono transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-lg border text-xs font-mono transition-colors cursor-pointer ${
               activeRole === "all"
                 ? "bg-sky-500/10 border-sky-400 text-sky-300 font-bold"
                 : "bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-750"
@@ -207,7 +207,7 @@ export default function MethodologicalAuditPanel() {
             <button
               key={role.id}
               onClick={() => setActiveRole(role.id)}
-              className={`px-3 py-1.5 rounded-lg border text-xs font-mono transition-all cursor-pointer ${
+              className={`px-3 py-1.5 rounded-lg border text-xs font-mono transition-colors cursor-pointer ${
                 activeRole === role.id
                   ? "bg-teal-500/10 border-teal-400 text-teal-300 font-bold"
                   : "bg-slate-950/40 border-slate-800 text-slate-400 hover:border-slate-750"
@@ -225,7 +225,7 @@ export default function MethodologicalAuditPanel() {
             .map((role) => (
               <div
                 key={role.id}
-                className="p-4 rounded-xl border border-slate-850 bg-slate-950/40 flex flex-col justify-between hover:border-slate-800 transition-all duration-300 group"
+                className="p-4 rounded-xl border border-slate-850 bg-slate-950/40 flex flex-col justify-between hover:border-slate-800 transition-colors duration-300 group"
               >
                 <div>
                   <div className="flex justify-between items-start mb-2">
@@ -261,7 +261,7 @@ export default function MethodologicalAuditPanel() {
       </h3>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8 text-xs">
         <div className="p-3 bg-slate-950/20 border border-slate-850 rounded-xl space-y-1.5">
-          <span className="font-bold text-emerald-400 block font-sans">COIRCO / AIC (Autoridad de Cuencas)</span>
+          <span className="font-bold text-emerald-400 block font-sans">Coirco / aic (Autoridad de Cuencas)</span>
           <p className="text-slate-400 leading-relaxed text-[11px]">
             &ldquo;Exigirían que la pluma NDWI aguas abajo de los vertidos se separe categóricamente de la presencia de sólidos suspendidos naturales o escurrimientos pluviales arcillosos que poseen firmas ópticas similares. No se pueden imputar 24 NTU sin una estación limnigráfica síncrona instalada por AIC.&rdquo;
           </p>
@@ -316,7 +316,7 @@ export default function MethodologicalAuditPanel() {
                         {row.directMeasured}
                       </span>
                     ) : (
-                      <span className="text-slate-500">❌ No</span>
+                      <span className="text-slate-500">No</span>
                     )}
                   </td>
                   <td className="p-3 text-[11px] text-slate-300">{row.inferred}</td>

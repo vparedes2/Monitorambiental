@@ -535,30 +535,30 @@ export default function VenteosMonitorModule() {
       }
     }
 
-    // 2. Draw Geoportal SIG Official Facilities Layer (SEN / IDENEU Store)
+    // 2. Draw Geoportal SIG Official Facilities Layer (SEN / IDENEU store)
     if (sigLayerRef.current) {
       sigLayerRef.current.clearLayers();
       if (showGeoportalSigLayer) {
         instalacionesSig.forEach((inst) => {
           const tipo = inst.tipo_instalacion || "";
-          let iconSymbol = "🛢️";
+          let iconSymbol = "";
           let badgeColor = "border-sky-500/50 text-sky-300";
           let circleColor = "#0284c7";
 
           if (tipo.includes("Troncal") || tipo.includes("CPF") || tipo.includes("Gas")) {
-            iconSymbol = "🏭";
+            iconSymbol = "";
             badgeColor = "border-teal-500/60 text-teal-300";
             circleColor = "#14b8a6";
           } else if (tipo.includes("Batería") || tipo.includes("Bateria")) {
-            iconSymbol = "🔋";
+            iconSymbol = "";
             badgeColor = "border-purple-500/60 text-purple-300";
             circleColor = "#a855f7";
           } else if (tipo.includes("Cargadero")) {
-            iconSymbol = "🚚";
+            iconSymbol = "";
             badgeColor = "border-amber-500/60 text-amber-300";
             circleColor = "#f59e0b";
           } else if (tipo.includes("Compresora")) {
-            iconSymbol = "⚡";
+            iconSymbol = "";
             badgeColor = "border-emerald-500/60 text-emerald-300";
             circleColor = "#10b981";
           }
@@ -568,7 +568,7 @@ export default function VenteosMonitorModule() {
             className: "custom-sig-pin",
             html: `
               <div class="flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-950/95 border ${badgeColor} shadow-2xl backdrop-blur-md pointer-events-auto cursor-pointer transform -translate-x-1/2 -translate-y-1/2 whitespace-nowrap">
-                <span class="text-[10px]">${iconSymbol}</span>
+                <span class="block w-2 h-2" style="background:${circleColor}"></span>
                 <span class="text-[8.5px] font-mono font-bold">${inst.codigo_sig}</span>
                 <span class="text-[7.5px] text-slate-400 font-mono">(±${inst.radio_tolerancia_metros}m)</span>
               </div>
@@ -664,7 +664,7 @@ export default function VenteosMonitorModule() {
           className: "custom-cadastral-ref",
           html: `
             <div class="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-slate-950/95 border border-teal-400 shadow-2xl pointer-events-none transform -translate-x-1/2 -translate-y-1/2 whitespace-nowrap">
-              <span class="text-[9px]">📍</span>
+              <span class="block w-1.5 h-1.5 bg-sky-300"></span>
               <span class="text-[9px] font-mono font-bold text-teal-300">
                 Mensura SEN: ${sig.codigo_sig} (±${selectedCruce.tolerancia_catastral_m}m)
               </span>
@@ -761,26 +761,26 @@ export default function VenteosMonitorModule() {
 
         const facilityName = isMatch && c.instalacion_sig 
           ? c.instalacion_sig.denominacion_corta 
-          : `⚠️ Anomalía [${satLat.toFixed(3)}, ${satLon.toFixed(3)}]`;
+          : `Anomalía [${satLat.toFixed(3)}, ${satLon.toFixed(3)}]`;
 
         const markerHtml = `
-          <div class="relative cursor-pointer transition-all duration-300 transform -translate-x-1/2 -translate-y-1/2 ${isSelected ? "scale-125 z-50" : "hover:scale-110 z-20"}">
+          <div class="relative cursor-pointer transform -translate-x-1/2 -translate-y-1/2 ${isSelected ? "z-50" : "z-20"}">
             ${isSelected ? `
               <div class="absolute -inset-3 rounded-full animate-ping opacity-60" style="background: ${glowColor}; animation-duration: 2s;"></div>
             ` : ""}
             <div class="w-9 h-9 rounded-xl bg-slate-950/95 border-2 ${borderColor} flex items-center justify-center shadow-[0_0_15px_${glowColor}]">
               ${!isMatch ? `
-                <span class="text-amber-400 text-sm font-black animate-bounce">⚠️</span>
+                <span class="block w-3 h-3 rotate-45 bg-amber-400"></span>
               ` : isCold ? `
-                <span class="text-cyan-400 text-sm">💨</span>
+                <span class="block w-3 h-3 rounded-full border-2 border-cyan-400"></span>
               ` : det.sensor.includes("Sentinel") ? `
-                <span class="text-emerald-400 text-sm">🛰️</span>
+                <span class="block w-3 h-3 rotate-45 border-2 border-emerald-400"></span>
               ` : `
-                <span class="text-amber-400 text-sm animate-pulse">🔥</span>
+                <span class="block w-3 h-3 rounded-full bg-amber-400"></span>
               `}
             </div>
             <div class="absolute top-10 left-1/2 -translate-x-1/2 bg-slate-950/95 border ${isMatch ? "border-slate-800" : "border-amber-500/60"} px-2.5 py-1 rounded-lg shadow-2xl whitespace-nowrap pointer-events-none flex items-center gap-1.5">
-              <span class="w-1.5 h-1.5 rounded-full ${!isMatch ? "bg-amber-400 animate-ping" : isCold ? "bg-cyan-400" : isCrit ? "bg-red-400" : "bg-emerald-400"}"></span>
+              <span class="w-1.5 h-1.5 rounded-full ${!isMatch ? "bg-amber-400" : isCold ? "bg-cyan-400" : isCrit ? "bg-red-400" : "bg-emerald-400"}"></span>
               <div>
                 <span class="text-[9.5px] font-mono font-black ${isMatch ? "text-slate-100" : "text-amber-300"} block leading-tight">
                   ${facilityName}
@@ -837,7 +837,7 @@ export default function VenteosMonitorModule() {
   const currentImage = imagenSatelital(currentDet.latitud_satelital, currentDet.longitud_satelital);
 
   return (
-    <div className={`transition-all duration-300 ${
+    <div className={`transition-colors duration-300 ${
       isFullscreen 
         ? "fixed inset-0 z-50 bg-slate-950 w-screen h-screen flex flex-col p-2 sm:p-4 overflow-hidden" 
         : "space-y-6"
@@ -852,7 +852,7 @@ export default function VenteosMonitorModule() {
             <div className="flex flex-wrap items-center gap-2 mb-1">
               <span className="p-1 px-2.5 rounded bg-cyan-500/15 text-cyan-400 text-[10px] font-mono font-black tracking-wider uppercase border border-cyan-500/30 flex items-center gap-1.5">
                 <Satellite className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-                NASA FIRMS & SENTINEL-2 ESA · POSTGIS / GEOJSON STORE DINÁMICO
+                NASA FIRMS y Sentinel-2 · capas GeoJSON
               </span>
               <span className="text-[10px] font-mono text-slate-400">
                 Res. SEN 236/93 · IDENEU Neuquén · Ley 1875
@@ -872,11 +872,11 @@ export default function VenteosMonitorModule() {
             {/* GeoJSON Store Management Button */}
             <button
               onClick={() => setShowUploadModal(true)}
-              className="px-3.5 py-2.5 bg-gradient-to-r from-teal-500/20 via-cyan-500/20 to-sky-500/20 hover:from-teal-500/30 hover:to-cyan-500/30 border border-teal-500/50 hover:border-teal-400 text-teal-300 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-teal-500/10 transition-all cursor-pointer"
+              className="px-3.5 py-2.5 bg-gradient-to-r from-teal-500/20 via-cyan-500/20 to-sky-500/20 hover:from-teal-500/30 hover:to-cyan-500/30 border border-teal-500/50 hover:border-teal-400 text-teal-300 rounded-xl font-bold flex items-center gap-2 shadow-lg shadow-teal-500/10 transition-colors cursor-pointer"
               title="Cargar capas GeoJSON oficiales o personalizadas de la Secretaría de Energía"
             >
               <Upload className="w-4 h-4 text-teal-400" />
-              <span>Cargar Capa GeoJSON / SIG</span>
+              <span>Cargar Capa GeoJson / SIG</span>
               <span className="bg-teal-500/30 text-teal-200 text-[9px] px-1.5 py-0.5 rounded-full font-black border border-teal-500/40">
                 {instalacionesSig.length} Locaciones
               </span>
@@ -906,7 +906,7 @@ export default function VenteosMonitorModule() {
             <button
               onClick={() => refreshSatelital(true)}
               disabled={isRefreshing}
-              className="p-2.5 bg-slate-950 border border-slate-800 hover:border-cyan-500/50 text-cyan-300 rounded-xl transition-all cursor-pointer"
+              className="p-2.5 bg-slate-950 border border-slate-800 hover:border-cyan-500/50 text-cyan-300 rounded-xl transition-colors cursor-pointer"
               title="Actualizar datos satelitales en vivo"
             >
               <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin text-cyan-400" : ""}`} />
@@ -914,7 +914,7 @@ export default function VenteosMonitorModule() {
 
             <button
               onClick={() => setIsFullscreen(!isFullscreen)}
-              className="px-3 py-2.5 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-200 rounded-xl font-bold font-mono text-xs flex items-center gap-1.5 transition-all cursor-pointer"
+              className="px-3 py-2.5 bg-slate-950 border border-slate-800 hover:border-slate-700 text-slate-200 rounded-xl font-bold font-mono text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
               title={isFullscreen ? "Salir de pantalla completa" : "Ver mapa a pantalla completa"}
             >
               {isFullscreen ? (
@@ -953,27 +953,27 @@ export default function VenteosMonitorModule() {
             <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-mono">
               <button
                 onClick={() => setCorrelationFilter("all")}
-                className={`px-2.5 py-1 rounded-lg transition-all ${correlationFilter === "all" ? "bg-slate-800 text-slate-100 font-bold" : "text-slate-400 hover:text-slate-200"}`}
+                className={`px-2.5 py-1 rounded-lg transition-colors ${correlationFilter === "all" ? "bg-slate-800 text-slate-100 font-bold" : "text-slate-400 hover:text-slate-200"}`}
               >
                 Todas ({cruces.length})
               </button>
               <button
                 onClick={() => setCorrelationFilter("match")}
-                className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 ${correlationFilter === "match" ? "bg-teal-500/20 text-teal-300 font-bold border border-teal-500/30" : "text-slate-400 hover:text-teal-300"}`}
+                className={`px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 ${correlationFilter === "match" ? "bg-teal-500/20 text-teal-300 font-bold border border-teal-500/30" : "text-slate-400 hover:text-teal-300"}`}
               >
-                <span>✅ Matches ({directMatches})</span>
+                <span>Matches ({directMatches})</span>
               </button>
               <button
                 onClick={() => setCorrelationFilter("anomalia")}
-                className={`px-2.5 py-1 rounded-lg transition-all flex items-center gap-1 ${correlationFilter === "anomalia" ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30" : "text-slate-400 hover:text-amber-300"}`}
+                className={`px-2.5 py-1 rounded-lg transition-colors flex items-center gap-1 ${correlationFilter === "anomalia" ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30" : "text-slate-400 hover:text-amber-300"}`}
               >
-                <span>⚠️ No Catastradas ({anomaliasCount})</span>
+                <span>No Catastradas ({anomaliasCount})</span>
               </button>
               <button
                 onClick={() => setCorrelationFilter("critico")}
-                className={`px-2.5 py-1 rounded-lg transition-all ${correlationFilter === "critico" ? "bg-red-500/20 text-red-400 font-bold border border-red-500/30" : "text-slate-400 hover:text-red-400"}`}
+                className={`px-2.5 py-1 rounded-lg transition-colors ${correlationFilter === "critico" ? "bg-red-500/20 text-red-400 font-bold border border-red-500/30" : "text-slate-400 hover:text-red-400"}`}
               >
-                🔥 Críticos ({criticalCount})
+                Críticos ({criticalCount})
               </button>
             </div>
 
@@ -981,21 +981,21 @@ export default function VenteosMonitorModule() {
             <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-[11px] font-mono">
               <button
                 onClick={() => setSensorFilter("all")}
-                className={`px-2.5 py-1 rounded-lg transition-all ${sensorFilter === "all" ? "bg-slate-800 text-slate-100 font-bold" : "text-slate-400 hover:text-slate-200"}`}
+                className={`px-2.5 py-1 rounded-lg transition-colors ${sensorFilter === "all" ? "bg-slate-800 text-slate-100 font-bold" : "text-slate-400 hover:text-slate-200"}`}
               >
                 Todos Satélites
               </button>
               <button
                 onClick={() => setSensorFilter("firms")}
-                className={`px-2.5 py-1 rounded-lg transition-all ${sensorFilter === "firms" ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30" : "text-slate-400 hover:text-amber-300"}`}
+                className={`px-2.5 py-1 rounded-lg transition-colors ${sensorFilter === "firms" ? "bg-amber-500/20 text-amber-300 font-bold border border-amber-500/30" : "text-slate-400 hover:text-amber-300"}`}
               >
-                🛰️ VIIRS FIRMS
+                VIIRS FIRMS
               </button>
               <button
                 onClick={() => setSensorFilter("sentinel")}
-                className={`px-2.5 py-1 rounded-lg transition-all ${sensorFilter === "sentinel" ? "bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30" : "text-slate-400 hover:text-cyan-300"}`}
+                className={`px-2.5 py-1 rounded-lg transition-colors ${sensorFilter === "sentinel" ? "bg-cyan-500/20 text-cyan-300 font-bold border border-cyan-500/30" : "text-slate-400 hover:text-cyan-300"}`}
               >
-                🛰️ Sentinel-2 SWIR
+                Sentinel-2 SWIR
               </button>
             </div>
 
@@ -1021,7 +1021,7 @@ export default function VenteosMonitorModule() {
           <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px]">
             <button
               onClick={() => setShowGeoportalSigLayer(!showGeoportalSigLayer)}
-              className={`px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-lg border transition-colors flex items-center gap-1.5 ${
                 showGeoportalSigLayer ? "bg-teal-500/20 border-teal-500/50 text-teal-300 font-bold" : "bg-slate-950 border-slate-800 text-slate-500"
               }`}
               title="Muestra todas las instalaciones catastradas en el Geoportal SIG"
@@ -1032,7 +1032,7 @@ export default function VenteosMonitorModule() {
 
             <button
               onClick={() => setShowCadastralTolerances(!showCadastralTolerances)}
-              className={`px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-lg border transition-colors flex items-center gap-1.5 ${
                 showCadastralTolerances ? "bg-teal-500/15 border-teal-500/40 text-teal-300 font-bold" : "bg-slate-950 border-slate-800 text-slate-500"
               }`}
               title="Muestra el buffer de tolerancia métrica (Plantas 400m, Baterías 250m, Pads 120m)"
@@ -1043,7 +1043,7 @@ export default function VenteosMonitorModule() {
 
             <button
               onClick={() => setShowThermalCircles(!showThermalCircles)}
-              className={`px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-lg border transition-colors flex items-center gap-1.5 ${
                 showThermalCircles ? "bg-red-500/15 border-red-500/40 text-red-300 font-bold" : "bg-slate-950 border-slate-800 text-slate-500"
               }`}
             >
@@ -1053,7 +1053,7 @@ export default function VenteosMonitorModule() {
 
             <button
               onClick={() => setShowPlumes(!showPlumes)}
-              className={`px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-lg border transition-colors flex items-center gap-1.5 ${
                 showPlumes ? "bg-amber-500/15 border-amber-500/40 text-amber-300 font-bold" : "bg-slate-950 border-slate-800 text-slate-500"
               }`}
             >
@@ -1063,7 +1063,7 @@ export default function VenteosMonitorModule() {
 
             <button
               onClick={() => setShowTownBuffers(!showTownBuffers)}
-              className={`px-2.5 py-1 rounded-lg border transition-all flex items-center gap-1.5 ${
+              className={`px-2.5 py-1 rounded-lg border transition-colors flex items-center gap-1.5 ${
                 showTownBuffers ? "bg-sky-500/15 border-sky-500/40 text-sky-300 font-bold" : "bg-slate-950 border-slate-800 text-slate-500"
               }`}
             >
@@ -1077,10 +1077,10 @@ export default function VenteosMonitorModule() {
               onChange={(e) => setMapBasemap(e.target.value as BasemapType)}
               className="bg-slate-950 border border-slate-800 text-teal-400 font-bold text-xs font-mono rounded-lg px-2.5 py-1 focus:outline-none"
             >
-              <option value="google-hybrid">🛰️ Google Satélite HD (Híbrido)</option>
-              <option value="google-satellite">🛰️ Google Satélite Óptico</option>
-              <option value="esri-satellite">🛰️ Esri World Imagery</option>
-              <option value="carto-dark">🌑 Carto Dark Mode</option>
+              <option value="google-hybrid">Google Satélite HD (Híbrido)</option>
+              <option value="google-satellite">Google Satélite Óptico</option>
+              <option value="esri-satellite">Esri World Imagery</option>
+              <option value="carto-dark">Carto Dark Mode</option>
             </select>
           </div>
         </div>
@@ -1101,7 +1101,7 @@ export default function VenteosMonitorModule() {
             <div className="flex items-center gap-2">
               <Satellite className="w-4 h-4 text-cyan-400 animate-spin" style={{ animationDuration: "14s" }} />
               <div>
-                <span className="text-[9px] font-mono text-slate-400 block leading-tight">COORDENADA SATELITAL ACTIVA</span>
+                <span className="text-[9px] font-mono text-slate-400 block leading-tight">Coordenada satelital activa</span>
                 <span className="text-[11px] font-mono font-black text-cyan-300">
                   [{currentDet.latitud_satelital.toFixed(4)}°, {currentDet.longitud_satelital.toFixed(4)}°]
                 </span>
@@ -1110,7 +1110,7 @@ export default function VenteosMonitorModule() {
           </div>
 
           <div className="bg-slate-950/95 border border-slate-800 px-3 py-1.5 rounded-xl backdrop-blur-md shadow-2xl">
-            <span className="text-[9px] font-mono text-slate-400 block">SENSOR EMISOR DE DETECCIÓN</span>
+            <span className="text-[9px] font-mono text-slate-400 block">Sensor emisor de detección</span>
             <span className="text-xs font-mono font-bold text-amber-300 flex items-center gap-1.5">
               <Radio className="w-3 h-3 text-amber-400" />
               {currentDet.sensor}
@@ -1123,7 +1123,7 @@ export default function VenteosMonitorModule() {
           <div className="flex items-center gap-1.5 pointer-events-auto">
             <button
               onClick={() => centerOnCruce(selectedCruce, 16)}
-              className="px-3 py-1.5 bg-slate-950/95 hover:bg-slate-900 border border-teal-500/40 text-teal-300 rounded-xl text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-xl transition-all cursor-pointer"
+              className="px-3 py-1.5 bg-slate-950/95 hover:bg-slate-900 border border-teal-500/40 text-teal-300 rounded-xl text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-xl transition-colors cursor-pointer"
               title="Aproximar al máximo al foco térmico satelital"
             >
               <ZoomIn className="w-3.5 h-3.5 text-teal-400" />
@@ -1134,7 +1134,7 @@ export default function VenteosMonitorModule() {
               href={selectedCruce.enlaces_inspeccion_hd?.google_maps_url || `https://www.google.com/maps/@${currentDet.latitud_satelital},${currentDet.longitud_satelital},18z/data=!3m1!1e3`}
               target="_blank"
               rel="noopener noreferrer"
-              className="px-3 py-1.5 bg-slate-950/95 hover:bg-slate-900 border border-slate-700 hover:border-teal-400 text-slate-300 hover:text-teal-300 rounded-xl text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-xl transition-all"
+              className="px-3 py-1.5 bg-slate-950/95 hover:bg-slate-900 border border-slate-700 hover:border-teal-400 text-slate-300 hover:text-teal-300 rounded-xl text-[10px] font-mono font-bold flex items-center gap-1.5 shadow-xl transition-colors"
               title="Abrir coordenadas satelitales en Google Earth / Maps"
             >
               <ExternalLink className="w-3.5 h-3.5 text-teal-400" />
@@ -1157,13 +1157,13 @@ export default function VenteosMonitorModule() {
                 const isCrit = cruce.estado_regulatorio === "Crítico";
                 const label = isMatch && cruce.instalacion_sig 
                   ? cruce.instalacion_sig.denominacion_corta 
-                  : `⚠️ Anomalía ${cruce.deteccion_satelital.id_deteccion.split("-").slice(-2).join("-")}`;
+                  : `Anomalía ${cruce.deteccion_satelital.id_deteccion.split("-").slice(-2).join("-")}`;
                 
                 return (
                   <button
                     key={cruce.id}
                     onClick={() => centerOnCruce(cruce, 14)}
-                    className={`px-3 py-1.5 rounded-xl text-left font-mono text-xs transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+                    className={`px-3 py-1.5 rounded-xl text-left font-mono text-xs transition-colors flex items-center gap-2 shrink-0 cursor-pointer ${
                       isSelected
                         ? isMatch
                           ? "bg-teal-500/20 border border-teal-400 text-teal-200 shadow-lg"
@@ -1171,7 +1171,7 @@ export default function VenteosMonitorModule() {
                         : "bg-slate-900 border border-slate-800 text-slate-300 hover:bg-slate-850"
                     }`}
                   >
-                    <span className={`w-2 h-2 rounded-full ${!isMatch ? "bg-amber-400 animate-ping" : isCrit ? "bg-red-500 animate-ping" : "bg-emerald-400"}`} />
+                    <span className={`w-2 h-2 rounded-full ${!isMatch ? "bg-amber-400" : isCrit ? "bg-red-500 animate-ping" : "bg-emerald-400"}`} />
                     <span className="font-bold">{label.split(" ")[0]}</span>
                     <span className="text-[10px] text-slate-400 font-sans">
                       ({isMatch && cruce.instalacion_sig ? cruce.instalacion_sig.bloque_concesion.split(" ")[0] : "Campo"})
@@ -1239,7 +1239,7 @@ export default function VenteosMonitorModule() {
 
                 <button
                   onClick={() => centerOnCruce(selectedCruce, 16)}
-                  className="absolute top-2.5 right-2.5 flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950/85 border border-slate-700 hover:border-teal-400 text-[9px] font-mono font-bold text-slate-200 backdrop-blur-md transition-all cursor-pointer"
+                  className="absolute top-2.5 right-2.5 flex items-center gap-1 px-2 py-0.5 rounded bg-slate-950/85 border border-slate-700 hover:border-teal-400 text-[9px] font-mono font-bold text-slate-200 backdrop-blur-md transition-colors cursor-pointer"
                   title="Ver en satélite con zoom 16x"
                 >
                   <Eye className="w-3 h-3 text-teal-400" />
@@ -1259,7 +1259,7 @@ export default function VenteosMonitorModule() {
               </div>
 
               {/* Cruce Espacial Automático (Spatial Join) con el Geoportal SIG Oficial */}
-              <div className={`p-3.5 rounded-xl border transition-all ${
+              <div className={`p-3.5 rounded-xl border transition-colors ${
                 selectedCruce.match_catastral
                   ? "bg-slate-900/90 border-teal-500/40" 
                   : "bg-amber-950/30 border-amber-500/50"
@@ -1268,7 +1268,7 @@ export default function VenteosMonitorModule() {
                   <div className="flex items-center gap-1.5 font-mono text-[10px] font-bold">
                     <ShieldCheck className={`w-3.5 h-3.5 ${selectedCruce.match_catastral ? "text-teal-400" : "text-amber-400"}`} />
                     <span className={selectedCruce.match_catastral ? "text-teal-300 uppercase" : "text-amber-300 uppercase"}>
-                      CRUCE ESPACIAL GEOPORTAL SIG
+                      Cruce espacial geoportal SIG
                     </span>
                   </div>
                   <span className={`px-2 py-0.5 rounded text-[9px] font-mono font-black ${
@@ -1450,17 +1450,17 @@ export default function VenteosMonitorModule() {
               <button
                 onClick={() => handleRunAudit(selectedCruce)}
                 disabled={auditLoading}
-                className="w-full py-3 px-4 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-black font-mono text-xs rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-teal-500/20 transition-all cursor-pointer disabled:opacity-50"
+                className="w-full py-3 px-4 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-black font-mono text-xs rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-teal-500/20 transition-colors cursor-pointer disabled:opacity-50"
               >
                 {auditLoading ? (
                   <>
                     <RefreshCw className="w-4 h-4 animate-spin" />
-                    <span>AUDITANDO TELEMETRÍA Y LEY 1875 CON IA...</span>
+                    <span>Auditando telemetría y ley 1875 CON IA...</span>
                   </>
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    <span>AUDITAR TELEMETRÍA SATELITAL CON IA</span>
+                    <span>Auditar telemetría satelital con IA</span>
                   </>
                 )}
               </button>
@@ -1476,7 +1476,7 @@ export default function VenteosMonitorModule() {
                 <div className="p-4 bg-slate-900 border border-teal-500/40 rounded-xl space-y-3 animate-fade-in shadow-xl">
                   <div className="flex justify-between items-start border-b border-slate-800 pb-2">
                     <div>
-                      <span className="text-[9px] font-mono text-teal-400 font-bold uppercase tracking-wider block">DICTAMEN REGULATORIO</span>
+                      <span className="text-[9px] font-mono text-teal-400 font-bold uppercase tracking-wider block">Dictamen regulatorio</span>
                       <h4 className="text-xs font-black text-slate-100 mt-0.5">{auditResult.calificacion_legal}</h4>
                     </div>
                     <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-black ${
@@ -1602,7 +1602,7 @@ export default function VenteosMonitorModule() {
                     <button
                       type="button"
                       onClick={() => setUploadMode("merge")}
-                      className={`flex-1 py-1.5 px-2 rounded-lg font-mono text-[10px] font-bold border transition-all ${
+                      className={`flex-1 py-1.5 px-2 rounded-lg font-mono text-[10px] font-bold border transition-colors ${
                         uploadMode === "merge" ? "bg-teal-500/20 border-teal-500 text-teal-300" : "border-slate-800 text-slate-400"
                       }`}
                     >
@@ -1611,7 +1611,7 @@ export default function VenteosMonitorModule() {
                     <button
                       type="button"
                       onClick={() => setUploadMode("replace")}
-                      className={`flex-1 py-1.5 px-2 rounded-lg font-mono text-[10px] font-bold border transition-all ${
+                      className={`flex-1 py-1.5 px-2 rounded-lg font-mono text-[10px] font-bold border transition-colors ${
                         uploadMode === "replace" ? "bg-amber-500/20 border-amber-500 text-amber-300" : "border-slate-800 text-slate-400"
                       }`}
                     >
@@ -1622,9 +1622,9 @@ export default function VenteosMonitorModule() {
 
                 <div className="text-[10px] font-mono text-slate-400 space-y-0.5">
                   <span className="font-bold text-slate-300 block">Tolerancias automáticas:</span>
-                  <div>🏭 Troncales / PTC / Gas: <b>±400 m</b></div>
-                  <div>🔋 Baterías y Colectoras: <b>±250 m</b></div>
-                  <div>🛢️ Pads y Pozos: <b>±120 m</b></div>
+                  <div>Troncales / PTC / Gas: <b>±400 m</b></div>
+                  <div>Baterías y Colectoras: <b>±250 m</b></div>
+                  <div>Pads y Pozos: <b>±120 m</b></div>
                 </div>
               </div>
 
@@ -1648,7 +1648,7 @@ export default function VenteosMonitorModule() {
                 type="button"
                 onClick={handleResetToOfficialBase}
                 disabled={uploadLoading}
-                className="px-3 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 text-xs font-mono rounded-xl transition-all cursor-pointer"
+                className="px-3 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 text-xs font-mono rounded-xl transition-colors cursor-pointer"
               >
                 Vaciar catastro
               </button>
@@ -1657,7 +1657,7 @@ export default function VenteosMonitorModule() {
                 <button
                   type="button"
                   onClick={() => setShowUploadModal(false)}
-                  className="px-4 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 text-xs font-mono rounded-xl transition-all cursor-pointer"
+                  className="px-4 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 text-xs font-mono rounded-xl transition-colors cursor-pointer"
                 >
                   Cancelar
                 </button>
@@ -1665,17 +1665,17 @@ export default function VenteosMonitorModule() {
                   type="button"
                   onClick={handleUploadGeoJson}
                   disabled={uploadLoading}
-                  className="px-5 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-black text-xs font-mono rounded-xl transition-all shadow-lg shadow-teal-500/20 cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
+                  className="px-5 py-2 bg-gradient-to-r from-teal-500 to-emerald-500 hover:from-teal-400 hover:to-emerald-400 text-slate-950 font-black text-xs font-mono rounded-xl transition-colors shadow-lg shadow-teal-500/20 cursor-pointer disabled:opacity-50 flex items-center gap-1.5"
                 >
                   {uploadLoading ? (
                     <>
                       <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>PROCESANDO CAPA...</span>
+                      <span>Procesando capa...</span>
                     </>
                   ) : (
                     <>
                       <Upload className="w-3.5 h-3.5" />
-                      <span>INGESTAR Y RECALCULAR CRUCES</span>
+                      <span>Ingestar y recalcular cruces</span>
                     </>
                   )}
                 </button>
@@ -1781,7 +1781,7 @@ export default function VenteosMonitorModule() {
                 type="button"
                 onClick={handleRegisterAnomalyAsPad}
                 disabled={registerLoading}
-                className="px-4 py-1.5 bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs font-mono rounded-xl transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-4 py-1.5 bg-teal-500 hover:bg-teal-400 text-slate-950 font-black text-xs font-mono rounded-xl transition-colors cursor-pointer flex items-center gap-1.5"
               >
                 {registerLoading ? "REGISTRANDO..." : "CONFIRMAR ALTA EN CATASTRO"}
               </button>

@@ -87,7 +87,7 @@ export default function IncidentForm({ selectedHotspot, onRunAnalysis, loading }
       <div className="border-b border-slate-800/80 pb-3 flex justify-between items-center gap-2">
         <div>
           <h3 className="text-xs font-semibold text-teal-400 tracking-wider uppercase font-mono">
-            {showExpert ? "⚙️ Parametrización Experta" : "🚨 Muestra de Foco Activo"}
+            {showExpert ? "Parametrización Experta" : "Muestra de Foco Activo"}
           </h3>
           <h2 className="text-base font-bold text-slate-100 font-sans mt-0.5">
             {showExpert ? "Configuración de Telemetría" : "Problema Detectado en Campo"}
@@ -98,19 +98,19 @@ export default function IncidentForm({ selectedHotspot, onRunAnalysis, loading }
         <button
           type="button"
           onClick={() => setShowExpert(!showExpert)}
-          className={`px-3 py-1.5 rounded-lg text-[9px] font-mono uppercase font-bold transition-all border shrink-0 ${
+          className={`px-3 py-1.5 rounded-lg text-[9px] font-mono uppercase font-bold transition-colors border shrink-0 ${
             showExpert 
               ? "bg-amber-500 text-slate-950 border-amber-400 font-black shadow-md" 
               : "bg-slate-950 hover:bg-slate-900 border-slate-850 text-slate-400 hover:text-slate-200"
           }`}
           id="btn-toggle-expert-view"
         >
-          {showExpert ? "Ocultar Parámetros" : "Ajustes Expertos (⚙️)"}
+          {showExpert ? "Ocultar Parámetros" : "Ajustes Expertos ()"}
         </button>
       </div>
 
       {!showExpert ? (
-        /* SIMPLIFIED HIGH-FIDELITY SAMPLE OF THE DETECTED INCIDENT */
+        /* Simplified high-fidelity sample of the detected incident */
         <div className="space-y-4" id="simplified-hotspot-preview-card">
           <div className="bg-gradient-to-br from-slate-950 to-slate-900/80 border border-slate-850 p-4 rounded-xl space-y-3.5 relative overflow-hidden">
             <div className={`absolute top-0 right-0 w-24 h-24 rounded-full blur-2xl opacity-10 ${
@@ -149,13 +149,13 @@ export default function IncidentForm({ selectedHotspot, onRunAnalysis, loading }
 
             <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-900/80">
               <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-900">
-                <span className="text-[8.5px] font-bold text-slate-500 block font-mono">📍 COORDENADAS WGS84</span>
+                <span className="text-[8.5px] font-bold text-slate-500 block font-mono">Coordenadas WGS84</span>
                 <span className="text-xs font-mono font-bold text-teal-400 block mt-0.5">
                   {lat.toFixed(5)}° S, {lon.toFixed(5)}° O
                 </span>
               </div>
               <div className="bg-slate-950/60 p-2 rounded-lg border border-slate-900">
-                <span className="text-[8.5px] font-bold text-slate-500 block font-mono">📏 SUPERFICIE AFECTADA</span>
+                <span className="text-[8.5px] font-bold text-slate-500 block font-mono">Superficie afectada</span>
                 <span className="text-xs font-mono font-extrabold text-orange-400 block mt-0.5">
                   {surface.toLocaleString("es-AR")} m²
                 </span>
@@ -177,7 +177,7 @@ export default function IncidentForm({ selectedHotspot, onRunAnalysis, loading }
           <div className="bg-slate-950/30 border border-slate-850 p-3.5 rounded-xl space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-[9.5px] font-bold text-slate-350 font-mono uppercase tracking-wider block">
-                🌱 Diagnóstico de Gases en Atmósfera (CAMS)
+                Diagnóstico de Gases en Atmósfera (CAMS)
               </span>
               <span className="text-[8px] font-mono text-slate-500">Normal vs Registrado</span>
             </div>
@@ -188,7 +188,7 @@ export default function IncidentForm({ selectedHotspot, onRunAnalysis, loading }
                 <div id="gas-ch4-simple" className="flex justify-between text-[11px] font-mono">
                   <span className="text-slate-400">Metano (CH₄) - Alerta Gases</span>
                   <span className={`font-bold ${ch4 > 1.9 ? "text-red-400" : "text-emerald-400"}`}>
-                    {ch4} ppm {ch4 > 1.9 ? "⚠️ Alto" : "✓ Estable"}
+                    {ch4} ppm {ch4 > 1.9 ? "Alto" : "Estable"}
                   </span>
                 </div>
                 <div className="h-1 bg-slate-900 rounded-full overflow-hidden">
@@ -204,7 +204,7 @@ export default function IncidentForm({ selectedHotspot, onRunAnalysis, loading }
                 <div id="gas-co2-simple" className="flex justify-between text-[11px] font-mono">
                   <span className="text-slate-400">Dióxido de Carbono (CO₂)</span>
                   <span className={`font-bold ${co2 > 420 ? "text-red-400" : "text-emerald-400"}`}>
-                    {co2} ppm {co2 > 420 ? "⚠️ Elevado" : "✓ Estable"}
+                    {co2} ppm {co2 > 420 ? "Elevado" : "Estable"}
                   </span>
                 </div>
                 <div className="h-1 bg-slate-900 rounded-full overflow-hidden">
@@ -219,14 +219,14 @@ export default function IncidentForm({ selectedHotspot, onRunAnalysis, loading }
 
           {/* Simple directions overlay helper for acting */}
           <div className="bg-teal-950/10 border border-teal-900/30 p-3 rounded-xl flex items-start gap-2.5">
-            <span className="text-sm">🛰️</span>
+            <span className="text-sm"></span>
             <div className="text-[11px] text-slate-350 leading-normal font-sans">
               <strong>Ubicación de Precisión:</strong> El mapa satelital al lado se ha enfocado de forma precisa en estas coordenadas. Puede alternar las pestañas superiores de sensores satelitales (SWIR, NDVI, TIR) para visualizar la huella exacta. Pulse el botón de análisis para auditarla con nuestra IA.
             </div>
           </div>
         </div>
       ) : (
-        /* FULL ADVANCED TECHNICAL DETAILED EXPERT PARAMETRIZATION FORM */
+        /* Full advanced technical detailed expert parametrization form */
         <div className="space-y-4 animate-fade-in" id="expert-telemetry-form-inputs">
           <div className="flex justify-between items-center">
             <span className="text-[10px] font-bold text-amber-400 font-mono uppercase bg-amber-500/10 px-2 py-1 rounded border border-amber-500/25">
@@ -258,7 +258,7 @@ export default function IncidentForm({ selectedHotspot, onRunAnalysis, loading }
           {/* GIS Positions */}
           <div className="space-y-2">
             <label className="text-[11px] font-bold text-slate-400 font-mono block">
-              📍 POSICIONAMIENTO GEOGRÁFICO (VACA MUERTA)
+              Posicionamiento geográfico (Vaca muerta)
             </label>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -296,7 +296,7 @@ export default function IncidentForm({ selectedHotspot, onRunAnalysis, loading }
           <div className="space-y-3 bg-slate-950/50 p-3 rounded-xl border border-slate-850">
             <div className="flex items-center gap-1.5 text-slate-350 text-[11px] font-bold font-mono">
               <Compass className="w-3.5 h-3.5 text-sky-400" />
-              <span>CONDICIÓN METEOROLÓGICA (WINDY)</span>
+              <span>Condición meteorológica (WINDY)</span>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
@@ -333,7 +333,7 @@ export default function IncidentForm({ selectedHotspot, onRunAnalysis, loading }
           {/* CAMS Gas Overlays */}
           <div className="space-y-3">
             <label className="text-[11px] font-bold text-slate-400 font-mono block">
-              📊 TELEMETRÍA DE COMPUESTOS ATMOSFÉRICOS (CAMS)
+              Telemetría de compuestos atmosféricos (CAMS)
             </label>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
               <div className="bg-slate-950 p-2 rounded-lg border border-slate-850">
@@ -397,7 +397,7 @@ export default function IncidentForm({ selectedHotspot, onRunAnalysis, loading }
           {/* Surface and Metadata */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <span className="text-[10px] text-slate-450 font-bold font-mono block mb-1">SUPERFICIE COMPROMETIDA (m²)</span>
+              <span className="text-[10px] text-slate-450 font-bold font-mono block mb-1">Superficie comprometida (m²)</span>
               <input 
                 type="number" 
                 min="10"
@@ -410,7 +410,7 @@ export default function IncidentForm({ selectedHotspot, onRunAnalysis, loading }
               />
             </div>
             <div>
-              <span className="text-[10px] text-slate-450 font-bold font-mono block mb-1">CATEGORÍA PRELIMINAR</span>
+              <span className="text-[10px] text-slate-450 font-bold font-mono block mb-1">Categoría preliminar</span>
               <select 
                 value={type} 
                 onChange={(e) => setType(e.target.value as any)}
@@ -430,83 +430,83 @@ export default function IncidentForm({ selectedHotspot, onRunAnalysis, loading }
           <div className="space-y-3 bg-slate-950/80 p-4 border border-slate-850 rounded-xl">
             <label className="text-[11px] font-bold text-slate-400 font-mono block flex items-center gap-1.5">
               <Image className="w-3.5 h-3.5 text-teal-400" />
-              <span>IMAGEN SATELITAL MULTIESPECTRAL / MIGRACIÓN</span>
+              <span>Imagen satelital multiespectral / migración</span>
             </label>
             <div className="grid grid-cols-5 gap-1.5">
               <button 
                 type="button" 
                 onClick={() => handlePresetImageSelect("oil_spill")}
-                className={`border rounded-lg p-1.5 text-[9px] font-mono leading-tight flex flex-col items-center gap-1 transition-all ${
+                className={`border rounded-lg p-1.5 text-[9px] font-mono leading-tight flex flex-col items-center gap-1 transition-colors ${
                   imagePayload === SATELLITE_IMAGES.oil_spill 
                     ? "bg-teal-500/10 border-teal-500 text-teal-300" 
                     : "border-slate-850 hover:border-slate-700 bg-slate-900 text-slate-400"
                 }`}
                 id="preset-img-spill"
               >
-                <span className="h-4 block font-sans">📸</span>
+                <span className="h-4 block font-sans"></span>
                 <span>NIR Derrame</span>
               </button>
               
               <button 
                 type="button" 
                 onClick={() => handlePresetImageSelect("gas_leak")}
-                className={`border rounded-lg p-1.5 text-[9px] font-mono leading-tight flex flex-col items-center gap-1 transition-all ${
+                className={`border rounded-lg p-1.5 text-[9px] font-mono leading-tight flex flex-col items-center gap-1 transition-colors ${
                   imagePayload === SATELLITE_IMAGES.gas_leak 
                     ? "bg-teal-500/10 border-teal-500 text-teal-300" 
                     : "border-slate-850 hover:border-slate-700 bg-slate-900 text-slate-400"
                 }`}
                 id="preset-img-gas"
               >
-                <span className="h-4 block font-sans">🟣</span>
+                <span className="h-4 block font-sans"></span>
                 <span>SWIR Metano</span>
               </button>
 
               <button 
                 type="button" 
                 onClick={() => handlePresetImageSelect("thermal_flaring")}
-                className={`border rounded-lg p-1.5 text-[9px] font-mono leading-tight flex flex-col items-center gap-1 transition-all ${
+                className={`border rounded-lg p-1.5 text-[9px] font-mono leading-tight flex flex-col items-center gap-1 transition-colors ${
                   imagePayload === SATELLITE_IMAGES.thermal_flaring 
                     ? "bg-teal-500/10 border-teal-500 text-teal-300" 
                     : "border-slate-850 hover:border-slate-700 bg-slate-900 text-slate-400"
                 }`}
                 id="preset-img-thermal"
               >
-                <span className="h-4 block font-sans">🔴</span>
+                <span className="h-4 block font-sans"></span>
                 <span>TIR Flaring</span>
               </button>
 
               <button 
                 type="button" 
                 onClick={() => handlePresetImageSelect("sludge_pit")}
-                className={`border rounded-lg p-1.5 text-[9px] font-mono leading-tight flex flex-col items-center gap-1 transition-all ${
+                className={`border rounded-lg p-1.5 text-[9px] font-mono leading-tight flex flex-col items-center gap-1 transition-colors ${
                   imagePayload === SATELLITE_IMAGES.sludge_pit 
                     ? "bg-teal-500/10 border-teal-500 text-teal-300" 
                     : "border-slate-850 hover:border-slate-700 bg-slate-900 text-slate-400"
                 }`}
                 id="preset-img-sludge"
               >
-                <span className="h-4 block font-sans">🟫</span>
+                <span className="h-4 block font-sans"></span>
                 <span>Multispec Lodo</span>
               </button>
 
               <button 
                 type="button" 
                 onClick={() => handlePresetImageSelect("generic_soil")}
-                className={`border rounded-lg p-1.5 text-[9px] font-mono leading-tight flex flex-col items-center gap-1 transition-all ${
+                className={`border rounded-lg p-1.5 text-[9px] font-mono leading-tight flex flex-col items-center gap-1 transition-colors ${
                   imagePayload === SATELLITE_IMAGES.generic_soil 
                     ? "bg-teal-500/10 border-teal-500 text-teal-300" 
                     : "border-slate-850 hover:border-slate-700 bg-slate-900 text-slate-400"
                 }`}
                 id="preset-img-soil"
               >
-                <span className="h-4 block font-sans">🌲</span>
+                <span className="h-4 block font-sans"></span>
                 <span>Vegetación</span>
               </button>
             </div>
 
             {/* Upload element */}
             <div className="flex gap-3 pt-1 items-center">
-              <div className="flex-1 relative cursor-pointer group bg-slate-900 hover:bg-slate-850 border border-slate-850 p-2 rounded-xl flex items-center justify-center gap-1.5 transition-all text-center">
+              <div className="flex-1 relative cursor-pointer group bg-slate-900 hover:bg-slate-850 border border-slate-850 p-2 rounded-xl flex items-center justify-center gap-1.5 transition-colors text-center">
                 <Upload className="w-3.5 h-3.5 text-slate-400 group-hover:text-teal-400" />
                 <span className="text-[10px] text-slate-450 font-mono group-hover:text-teal-300">
                   {imagePayload ? "¡Archivo Vinculado!" : "Sube satélite JPG/PNG"}
@@ -541,7 +541,7 @@ export default function IncidentForm({ selectedHotspot, onRunAnalysis, loading }
 
           {/* Description */}
           <div>
-            <span className="text-[10px] text-slate-450 font-bold font-mono block mb-1">OBSERVACIONES FÍSICAS Y DETALLES OPERATIVOS</span>
+            <span className="text-[10px] text-slate-450 font-bold font-mono block mb-1">Observaciones físicas y detalles operativos</span>
             <textarea
               rows={3}
               value={desc}
@@ -559,7 +559,7 @@ export default function IncidentForm({ selectedHotspot, onRunAnalysis, loading }
       <button
         type="submit"
         disabled={loading}
-        className={`w-full py-3.5 rounded-xl text-xs font-bold font-mono text-slate-950 flex gap-2 items-center justify-center tracking-widest uppercase transition-all shadow-lg ${
+        className={`w-full py-3.5 rounded-xl text-xs font-bold font-mono text-slate-950 flex gap-2 items-center justify-center tracking-widest uppercase transition-colors shadow-lg ${
           loading 
             ? "bg-slate-800 text-slate-500 border border-slate-755 cursor-not-allowed" 
             : "bg-radial from-teal-300 to-emerald-400 hover:from-teal-200 hover:to-emerald-300 active:scale-98 shadow-teal-500/15"

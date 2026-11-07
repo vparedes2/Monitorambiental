@@ -5,6 +5,7 @@ import { circuloKm } from "../lib/orbits";
 import { Loader2, Crosshair, ListChecks, FileDown } from "lucide-react";
 import { capturarMapa, generarInformePDF, nombreArchivo, type ItemLeyenda } from "../lib/exportar";
 import { obtenerBarrido, conCache } from "../services/osmGeo";
+import { useSigNeuquen } from "../lib/neuquen";
 
 type Nivel = "normal" | "observar" | "alerta" | "sin_datos";
 
@@ -65,7 +66,17 @@ export default function SueloAgua() {
   const [error, setError] = useState<string | null>(null);
   const [res, setRes] = useState<Resultado | null>(null);
   const [serie, setSerie] = useState("ndwi");
-  const [catastro, setCatastro] = useState<Instalacion[]>([]);
+  const [catastroPropio, setCatastro] = useState<Instalacion[]>([]);
+  const sig = useSigNeuquen();
+  const [fuenteLote, setFuenteLote] = useState<"sumideros" | "instalaciones" | "propio">("sumideros");
+  const [operadorLote, setOperadorLote] = useState("todas");
+  const listaFuente: (Instalacion & { operador?: string | null })[] =
+    fuenteLote === "propio" ? catastroPropio
+    : fuenteLote === "sumideros"
+      ? sig.sumideros.filter((x) => x.estado !== "Abandonado").map((x, i) => ({ codigo_sig: `sum-${i}-${x.nombre}`, nombre_oficial: `${x.nombre ?? "Sumidero"} · ${x.area ?? ""}`, latitud_oficial: x.lat, longitud_oficial: x.lon, operador: x.operador }))
+      : sig.instalaciones.map((x, i) => ({ codigo_sig: x.id ?? `inst-${i}`, nombre_oficial: `${x.nombre ?? x.sigla ?? "Instalación"} · ${x.tipo ?? ""}`, latitud_oficial: x.lat, longitud_oficial: x.lon, operador: x.operador }));
+  const operadoresLote = [...new Set(listaFuente.map((x) => x.operador).filter(Boolean) as string[])].sort();
+  const catastro = listaFuente.filter((x) => operadorLote === "todas" || x.operador === operadorLote);
   const [lote, setLote] = useState<{ inst: Instalacion; nivel: Nivel | "error"; detalle?: string }[]>([]);
   const [loteCorriendo, setLoteCorriendo] = useState(false);
   const [modo, setModo] = useState<"cambios" | "derrames" | "barrido">("cambios");
@@ -332,15 +343,30 @@ export default function SueloAgua() {
         )}
 
         <div className="p-5 border-t border-linea">
-          <h2 className="titulo text-2xl font-semibold flex items-center gap-2"><ListChecks className="w-5 h-5 text-lutita" /> Instalaciones del catastro</h2>
+          <h2 className="titulo text-2xl font-semibold flex items-center gap-2"><ListChecks className="w-5 h-5 text-lutita" /> Análisis por instalación</h2>
+          <p className="text-sm text-tenue mt-1">Corre el análisis de cambios sobre hasta 20 puntos del registro provincial de Neuquén.</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <div className="flex text-xs border border-linea" role="group" aria-label="Qué analizar">
+              {([["sumideros", "Sumideros"], ["instalaciones", "Instalaciones"], ["propio", "Mi KML"]] as const).map(([id, txt]) => (
+                <button key={id} onClick={() => { setFuenteLote(id); setOperadorLote("todas"); setLote([]); }} aria-pressed={fuenteLote === id}
+                  className={`px-2.5 py-1.5 ${fuenteLote === id ? "bg-lutita text-noche" : "text-lutita hover:bg-noche/50"}`}>{txt}</button>
+              ))}
+            </div>
+            {operadoresLote.length > 1 && (
+              <select value={operadorLote} onChange={(e) => { setOperadorLote(e.target.value); setLote([]); }} className="flex-1 min-w-[160px] bg-noche border border-linea text-xs px-2 py-1.5" aria-label="Operadora">
+                <option value="todas">Todas las operadoras</option>
+                {operadoresLote.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
+            )}
+          </div>
           {catastro.length === 0 ? (
-            <p className="text-sm text-tenue mt-2">Todavía no cargaste instalaciones. Subí tu KML en la pantalla Focos para analizarlas todas de una vez.</p>
+            <p className="text-sm text-tenue mt-3">{fuenteLote === "propio" ? "Todavía no cargaste un KML propio. Podés subirlo en la pantalla Focos." : sig.cargando ? "Cargando el registro provincial…" : "No hay puntos para este filtro."}</p>
           ) : (
             <>
               <button onClick={analizarCatastro} disabled={loteCorriendo}
                 className="mt-3 flex items-center gap-2 px-3 py-2 text-sm border border-lutita text-lutita disabled:opacity-60">
                 {loteCorriendo && <Loader2 className="w-4 h-4 animate-spin" />}
-                {loteCorriendo ? `Analizando ${lote.length + 1} de ${Math.min(20, catastro.length)}…` : `Analizar ${Math.min(20, catastro.length)} instalaciones (radio ${radio} m)`}
+                {loteCorriendo ? `Analizando ${lote.length + 1} de ${Math.min(20, catastro.length)}…` : `Analizar ${Math.min(20, catastro.length)} ${fuenteLote === "sumideros" ? "sumideros" : "instalaciones"} (radio ${radio} m)`}
               </button>
               <ul className="mt-3 divide-y divide-linea">
                 {catastro.slice(0, 50).map((c) => {
