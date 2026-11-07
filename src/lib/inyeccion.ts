@@ -52,3 +52,13 @@ export function leerIny(p: InyPozo, datos: InyDatos) {
   };
   return { ultimoMes: ult >= 0 ? nombreMes(ult) : null, total, ultimoDia, aviso, texto: texto[aviso], nombreMes };
 }
+
+/** Marca de coherencia para tablas y mapas */
+export const COHERENCIA: Record<AvisoIny | "sin_nacion", { nombre: string; color: string; orden: number }> = {
+  activo_sin: { nombre: "Revisar: activo con 0 m³", color: "#FF4D6D", orden: 0 },
+  dejo: { nombre: "Dejó de declarar", color: "#FFC857", orden: 1 },
+  inyecta: { nombre: "Declara al día", color: "#7BD88F", orden: 2 },
+  otro: { nombre: "Declara en otro registro", color: "#A9D8B0", orden: 3 },
+  inactivo: { nombre: "Inactivo, sin inyección", color: "#8B8172", orden: 4 },
+  sin_nacion: { nombre: "Sin datos en Nación", color: "#5C554C", orden: 5 }
+};

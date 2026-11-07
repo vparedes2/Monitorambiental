@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { useInyeccion, leerIny, type InyPozo, type InyDatos } from "../lib/inyeccion";
+import { useInyeccion, leerIny, COHERENCIA, type InyPozo, type InyDatos } from "../lib/inyeccion";
 import { useSesion } from "../lib/sesion";
 import type { Map as MLMap } from "maplibre-gl";
 import { motion, AnimatePresence } from "motion/react";
@@ -73,6 +73,8 @@ export default function Instalaciones() {
   const [vis, setVis] = useState(visInicial);
   const [sel, setSel] = useState<Seleccion | null>(null);
   const iny = useInyeccion();
+  const nacionRef = useRef<any>(null);
+  const [nacionListo, setNacionListo] = useState(false);
   const [busqueda, setBusqueda] = useState("");
   const [operador, setOperador] = useState("todas");
   const [filtroVent, setFiltroVent] = useState<"todos" | "detectado" | "sin" | "vencido">("todos");
@@ -130,13 +132,13 @@ export default function Instalaciones() {
     }
     const vacio: any = { type: "FeatureCollection", features: [] };
     for (const id of ["areas", "ductos", "traza", "sumideros", "sumnac", "inst", "vent", "focosx"]) setGeo(map, id, vacio);
-    fetch("/capas/sumideros-nacion.geojson").then((r) => r.json()).then((g) => setGeo(map, "sumnac", g)).catch(() => {});
+    fetch("/capas/sumideros-nacion.geojson").then((r) => r.json()).then((g) => { nacionRef.current = g; setNacionListo(true); }).catch(() => {});
     map.addLayer({ id: "x-areas-linea", type: "line", source: "areas", paint: { "line-color": "#8FE3F0", "line-opacity": 0.45, "line-width": 1 } });
     map.addLayer({ id: "x-areas-rotulo", type: "symbol", source: "areas", minzoom: 8.5, layout: { "text-field": ["get", "nombre"], "text-size": 10, "text-font": ["Open Sans Regular"] }, paint: { "text-color": "#8FE3F0", "text-halo-color": "#12100E", "text-halo-width": 1.2 } });
     map.addLayer({ id: "x-ductos", type: "line", source: "ductos", paint: { "line-color": ["case", ["==", ["get", "fluido"], "Gas"], "#C9A46A", "#EEE7DB"], "line-width": 1.6, "line-opacity": 0.8 } });
     map.addLayer({ id: "x-traza", type: "line", source: "traza", paint: { "line-color": "#FF4D6D", "line-width": 3, "line-dasharray": [2, 1] } });
-    map.addLayer({ id: "x-sum", type: "circle", source: "sumideros", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 2.5, 12, 6], "circle-color": "#5AA9FF", "circle-stroke-color": "#12100E", "circle-stroke-width": 1 } });
-    map.addLayer({ id: "x-sumn", type: "circle", source: "sumnac", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 3.5, 12, 8], "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": "#B9DCFF", "circle-stroke-width": 1.8 } });
+    map.addLayer({ id: "x-sum", type: "circle", source: "sumideros", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 2.5, 12, 6], "circle-color": ["coalesce", ["get", "coh_color"], "#5AA9FF"], "circle-stroke-color": "#12100E", "circle-stroke-width": 1 } });
+    map.addLayer({ id: "x-sumn", type: "circle", source: "sumnac", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 3.5, 12, 8], "circle-color": "rgba(0,0,0,0)", "circle-stroke-color": ["coalesce", ["get", "coh_color"], "#B9DCFF"], "circle-stroke-width": 1.8 } });
     map.addLayer({ id: "x-inst", type: "circle", source: "inst", paint: { "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 2.5, 12, 7], "circle-color": ["get", "color"], "circle-opacity": 0.9, "circle-stroke-color": "#12100E", "circle-stroke-width": 1.2 } });
     map.addLayer({ id: "x-vent", type: "circle", source: "vent", paint: {
       "circle-radius": ["interpolate", ["linear"], ["zoom"], 7, 6, 12, 14], "circle-color": "rgba(0,0,0,0)",
@@ -188,7 +190,14 @@ export default function Instalaciones() {
     if (sig.areas) setGeo(map, "areas", sig.areas);
     if (sig.ductos) setGeo(map, "ductos", sig.ductos);
     if (traza) setGeo(map, "traza", traza);
-    setGeo(map, "sumideros", { type: "FeatureCollection", features: sig.sumideros.map((s) => ({ type: "Feature", properties: s, geometry: { type: "Point", coordinates: [s.lon, s.lat] } })) } as any);
+    // Con permiso a los datos de Nación, cada sumidero toma el color de su inyección declarada
+    const cohColor = (id: any) => {
+      if (!iny || !capaOk("sumnac") || id == null) return undefined;
+      const p = iny.pozos[String(id)];
+      return p ? COHERENCIA[leerIny(p, iny).aviso].color : COHERENCIA.sin_nacion.color;
+    };
+    setGeo(map, "sumideros", { type: "FeatureCollection", features: sig.sumideros.map((s) => ({ type: "Feature", properties: { ...s, coh_color: cohColor(s.id_nacion) }, geometry: { type: "Point", coordinates: [s.lon, s.lat] } })) } as any);
+    if (nacionRef.current) setGeo(map, "sumnac", { ...nacionRef.current, features: nacionRef.current.features.map((f: any) => ({ ...f, properties: { ...f.properties, coh_color: cohColor(f.properties.id_nacion) } })) });
     setGeo(map, "inst", { type: "FeatureCollection", features: sig.instalaciones.map((i) => ({ type: "Feature", properties: { ...i, color: colorTipo(i.tipo) }, geometry: { type: "Point", coordinates: [i.lon, i.lat] } })) } as any);
     const det = new globalThis.Map<any, (typeof venteosEstado)[number]>(venteosEstado.map((v) => [v.venteo, v]));
     setGeo(map, "vent", { type: "FeatureCollection", features: sig.venteos.map((v) => ({ type: "Feature", properties: { ...v, vig: det.get(v)?.vigente ?? true, detecciones: det.get(v)?.detecciones ?? 0 }, geometry: { type: "Point", coordinates: [v.lon, v.lat] } })) } as any);
@@ -199,8 +208,17 @@ export default function Instalaciones() {
       area: c.area ? `${c.area.nombre} (${c.area.operador})` : "Fuera de áreas de Neuquén"
     }, geometry: { type: "Point", coordinates: [f.lon, f.lat] } })) } as any);
     for (const [id, capas] of Object.entries(CAPAS_MAP)) for (const l of capas) if (map.getLayer(l)) map.setLayoutProperty(l, "visibility", vis[id as IdCapa] && capaOk(id) ? "visible" : "none");
-  }, [listo, sig.areas, sig.ductos, sig.instalaciones, sig.venteos, sig.sumideros, traza, cruce, venteosEstado, vis, capasPermitidas]);
+  }, [listo, sig.areas, sig.ductos, sig.instalaciones, sig.venteos, sig.sumideros, traza, cruce, venteosEstado, vis, capasPermitidas, iny, nacionListo]);
 
+  // Desde la tabla de sumideros: centrar y abrir la ficha del pozo elegido
+  useEffect(() => {
+    if (!listo) return;
+    let d: any = null;
+    try { d = JSON.parse(sessionStorage.getItem("ir-a-punto") || "null"); sessionStorage.removeItem("ir-a-punto"); } catch { /* */ }
+    const s0 = d && sig.sumideros.find((x) => x.id_nacion != null && String(x.id_nacion) === d.idNacion);
+    if (d) ir(d.lat, d.lon, { tipo: "Pozo sumidero", titulo: d.nombre, lat: d.lat, lon: d.lon, idNacion: d.idNacion,
+      datos: s0 ? [["Operadora", s0.operador], ["Área", s0.area], ["Estado (Provincia)", s0.estado], ["Perforación", s0.inicio_perf ?? s0.anio]] : [] });
+  }, [listo]);
   const ir = (lat: number, lon: number, s?: Seleccion) => {
     if (mapRef.current) enfocar(mapRef.current, [lon, lat], 13);
     if (s) setSel(s);
@@ -279,7 +297,7 @@ export default function Instalaciones() {
                   <div key={k} className="flex justify-between gap-3"><dt className="text-tenue shrink-0">{k}</dt><dd className="text-right">{typeof v === "number" ? v.toLocaleString("es-AR") : v}</dd></div>
                 ))}
               </dl>
-              {sel.idNacion && iny && puede("instalaciones.nacion") && <FichaInyeccion p={iny.pozos[sel.idNacion]} datos={iny} />}
+              {sel.idNacion && iny && (puede("instalaciones.nacion") || puede("instalaciones.tabla")) && <FichaInyeccion p={iny.pozos[sel.idNacion]} datos={iny} />}
               <div className="mt-3 flex gap-2 text-xs">
                 <button onClick={() => ir(sel.lat, sel.lon)} className="flex-1 px-2 py-1.5 border border-linea text-hielo hover:border-hielo">Acercar</button>
                 <a className="flex-1 text-center px-2 py-1.5 border border-linea text-hielo hover:border-hielo" target="_blank" rel="noopener" href={`https://earth.google.com/web/@${sel.lat},${sel.lon},0a,1200d,35y,0h,45t,0r`}>Google Earth ↗</a>
@@ -334,6 +352,17 @@ export default function Instalaciones() {
             {sig.cargando ? "Cargando registro provincial…" : `${sig.instalaciones.length} instalaciones, ${sig.venteos.length} venteos autorizados, ${sig.sumideros.length} sumideros, ${sig.areas?.features?.length ?? 0} áreas.`}
             {" "}Instalaciones por color: celeste gas, ocre crudo, blanco baterías y USP, azul agua e inyección, violeta otras.
           </p>
+          {capaOk("sumnac") && iny && (
+            <div className="mt-3">
+              <p className="text-[11px] text-tenue mb-1.5">Sumideros por inyección declarada a Nación:</p>
+              <div className="flex flex-wrap gap-x-3 gap-y-1 text-[11px]">
+                {(["activo_sin", "dejo", "inyecta", "inactivo", "sin_nacion"] as const).map((k) => (
+                  <span key={k} className="flex items-center gap-1.5"><span className="w-2 h-2 rounded-full" style={{ background: COHERENCIA[k].color }} />{COHERENCIA[k].nombre}</span>
+                ))}
+              </div>
+            </div>
+          )}
+          {puede("instalaciones.tabla") && <a href="#/sumideros" className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-linea text-hielo hover:border-hielo">Tabla de sumideros con inyección declarada →</a>}
         </div>
 
         {puede("instalaciones.venteos") && <div className="p-5">

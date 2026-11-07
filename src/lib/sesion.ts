@@ -24,6 +24,7 @@ export const SECCIONES: Seccion[] = [
     { id: "instalaciones.venteos", nombre: "Venteos autorizados (capa y lista de permisos)" },
     { id: "instalaciones.sumideros", nombre: "Pozos sumideros de la capa provincial" },
     { id: "instalaciones.nacion", nombre: "Datos de Nación: sumideros no publicados e inyección declarada" },
+    { id: "instalaciones.tabla", nombre: "Tabla de sumideros con inyección declarada" },
     { id: "instalaciones.infra", nombre: "Ductos, áreas, locaciones, pozos y trazas" },
     { id: "instalaciones.exportar", nombre: "Exportar informe PDF y CSV del cruce" }
   ] },

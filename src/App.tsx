@@ -14,6 +14,7 @@ const Instalaciones = lazy(() => import("./screens/Instalaciones"));
 const TableroDemo = lazy(() => import("./screens/TableroDemo"));
 const Ingresar = lazy(() => import("./screens/Ingresar"));
 const Usuarios = lazy(() => import("./screens/Usuarios"));
+const Sumideros = lazy(() => import("./screens/Sumideros"));
 
 class Resguardo extends React.Component<{ children: React.ReactNode; clave: string }, { error: string | null }> {
   state = { error: null as string | null };
@@ -37,7 +38,7 @@ class Resguardo extends React.Component<{ children: React.ReactNode; clave: stri
   }
 }
 
-type Ruta = "inicio" | "orbitas" | "instalaciones" | "focos" | "suelo" | "catalogo" | "demo" | "ingresar" | "usuarios";
+type Ruta = "inicio" | "orbitas" | "instalaciones" | "focos" | "suelo" | "catalogo" | "demo" | "ingresar" | "usuarios" | "sumideros";
 
 const RUTAS: { id: Ruta; nombre: string; corto?: string; icono: React.ElementType }[] = [
   { id: "inicio", nombre: "Inicio", icono: Globe2 },
@@ -51,7 +52,7 @@ const RUTAS: { id: Ruta; nombre: string; corto?: string; icono: React.ElementTyp
 
 const leerRuta = (): Ruta => {
   const h = window.location.hash.replace("#/", "").replace("#", "") as Ruta;
-  return RUTAS.some((r) => r.id === h) || h === "ingresar" || h === "usuarios" ? h : "inicio";
+  return RUTAS.some((r) => r.id === h) || h === "ingresar" || h === "usuarios" || h === "sumideros" ? h : "inicio";
 };
 
 function Cargando() {
@@ -77,10 +78,10 @@ export default function App() {
   ];
   const navMovil = [...visibles, ...extras];
   // Pantalla sin permiso: se pide ingresar (sin sesión) o se vuelve a Inicio
-  const bloqueada = !cargando && RUTAS.some((r) => r.id === ruta) && !puede(ruta);
+  const bloqueada = !cargando && ((RUTAS.some((r) => r.id === ruta) && !puede(ruta)) || (ruta === "sumideros" && !puede("instalaciones.tabla")));
 
   useEffect(() => {
-    const r = RUTAS.find((x) => x.id === ruta);
+    const r = RUTAS.find((x) => x.id === ruta) ?? (ruta === "sumideros" ? { nombre: "Sumideros" } : ruta === "usuarios" ? { nombre: "Usuarios" } : { nombre: "Ingresar" });
     document.title = ruta === "inicio" ? "Vaca Muerta · Monitor ambiental satelital" : `${r?.nombre} · Vaca Muerta monitor ambiental`;
   }, [ruta]);
 
@@ -102,7 +103,7 @@ export default function App() {
       <nav aria-label="Pantallas" className="hidden lg:flex fixed left-0 top-0 bottom-0 w-[88px] flex-col items-center gap-1 py-5 border-r border-linea bg-noche/95 z-50">
         <a href="#/inicio" className="mb-5 logo-hover" aria-label="Monitor ambiental Vaca Muerta, inicio"><LogoMarca size={44} /></a>
         {[...visibles, ...extras.slice(0, -1)].map((r) => {
-          const activo = ruta === r.id;
+          const activo = ruta === r.id || (ruta === "sumideros" && r.id === "instalaciones");
           const I = r.icono;
           return (
             <a key={r.id} href={`#/${r.id}`} aria-current={activo ? "page" : undefined}
@@ -164,6 +165,7 @@ export default function App() {
           {ruta === "demo" && <TableroDemo vista="general" />}
           {ruta === "ingresar" && <Ingresar alEntrar={() => irA("inicio")} />}
           {ruta === "usuarios" && <Usuarios />}
+          {ruta === "sumideros" && <Sumideros />}
           </>}
           </div>
         </Suspense>

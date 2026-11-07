@@ -5,6 +5,7 @@ import { circuloKm } from "../lib/orbits";
 import { Loader2, Crosshair, ListChecks, FileDown } from "lucide-react";
 import { capturarMapa, generarInformePDF, nombreArchivo, type ItemLeyenda } from "../lib/exportar";
 import { useSesion } from "../lib/sesion";
+import { useInyeccion, leerIny, COHERENCIA } from "../lib/inyeccion";
 import { obtenerBarrido, barridoFijo, conCache } from "../services/osmGeo";
 import { useSigNeuquen } from "../lib/neuquen";
 
@@ -94,10 +95,21 @@ export default function SueloAgua() {
   const sig = useSigNeuquen();
   const [fuenteLote, setFuenteLote] = useState<"sumideros" | "instalaciones" | "propio">("sumideros");
   const [operadorLote, setOperadorLote] = useState("todas");
-  const listaFuente: (Instalacion & { operador?: string | null })[] =
+  const { puede } = useSesion();
+  const iny = useInyeccion();
+  const verIny = puede("instalaciones.nacion") || puede("instalaciones.tabla");
+  const datoIny = (id: any) => {
+    const p = iny && id != null ? iny.pozos[String(id)] : undefined;
+    if (!p || !iny || !verIny) return undefined;
+    const l = leerIny(p, iny);
+    return { color: COHERENCIA[l.aviso].color, texto: `${COHERENCIA[l.aviso].nombre} · ${l.total.toLocaleString("es-AR")} m³ en el año` };
+  };
+  const listaFuente: (Instalacion & { operador?: string | null; iny?: { color: string; texto: string } })[] =
     fuenteLote === "propio" ? catastroPropio
     : fuenteLote === "sumideros"
-      ? sig.sumideros.filter((x) => x.estado !== "Abandonado").map((x, i) => ({ codigo_sig: `sum-${i}-${x.nombre}`, nombre_oficial: `${x.nombre ?? "Sumidero"} · ${x.area ?? ""}`, latitud_oficial: x.lat, longitud_oficial: x.lon, operador: x.operador }))
+      ? sig.sumideros.filter((x) => x.estado !== "Abandonado")
+          .map((x, i) => ({ codigo_sig: `sum-${i}-${x.nombre}`, nombre_oficial: `${x.nombre ?? "Sumidero"} · ${x.area ?? ""}`, latitud_oficial: x.lat, longitud_oficial: x.lon, operador: x.operador, iny: datoIny(x.id_nacion) }))
+          .sort((a, b) => (a.operador ?? "").localeCompare(b.operador ?? "", "es") || a.nombre_oficial.localeCompare(b.nombre_oficial, "es"))
       : sig.instalaciones.map((x, i) => ({ codigo_sig: x.id ?? `inst-${i}`, nombre_oficial: `${x.nombre ?? x.sigla ?? "Instalación"} · ${x.tipo ?? ""}`, latitud_oficial: x.lat, longitud_oficial: x.lon, operador: x.operador }));
   const operadoresLote = [...new Set(listaFuente.map((x) => x.operador).filter(Boolean) as string[])].sort();
   const [buscarLote, setBuscarLote] = useState("");
@@ -109,7 +121,6 @@ export default function SueloAgua() {
   const [loteCorriendo, setLoteCorriendo] = useState(false);
   const [tanda, setTanda] = useState({ desde: 0, n: 0 });
   const [pausa, setPausa] = useState(false);
-  const { puede } = useSesion();
   const modos = ([["cambios", "Cambios"], ["derrames", "Derrames"], ["barrido", "Barridos"]] as const).filter(([id]) =>
     id === "cambios" ? puede("suelo.cambios") : id === "derrames" ? puede("suelo.derrame_suelo") || puede("suelo.derrame_agua") : puede("suelo.barridos"));
   const tiposDerrame = ([["suelo", "En suelo", "Sentinel-2, 20 m"], ["agua", "En agua", "Radar Sentinel-1, 10 m"]] as const).filter(([id]) => puede(`suelo.derrame_${id}`));
@@ -448,6 +459,10 @@ export default function SueloAgua() {
                         <span className="mt-1.5 w-2.5 h-2.5 rounded-full shrink-0" style={{ background: r && r.nivel !== "error" ? COLOR_NIVEL[r.nivel] : "var(--color-linea-fuerte)" }} />
                         <span className="flex-1">
                           <span className="block text-sm">{c.nombre_oficial}</span>
+                          {(c.operador || (c as any).iny) && <span className="flex items-center gap-1.5 text-[11px] text-tenue">
+                            {(c as any).iny && <span className="w-2 h-2 rounded-full shrink-0" style={{ background: (c as any).iny.color }} />}
+                            {[c.operador, (c as any).iny?.texto].filter(Boolean).join(" · ")}
+                          </span>}
                           {r && <span className="block text-xs text-tenue">{r.nivel === "error" ? `Error: ${r.detalle}` : TEXTO_NIVEL[r.nivel]}{r.detalle && r.nivel !== "error" ? `: ${r.detalle}` : ""}</span>}
                         </span>
                       </button>
