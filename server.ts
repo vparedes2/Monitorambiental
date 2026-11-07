@@ -414,7 +414,7 @@ app.get("/api/imagen", async (req, res) => {
       output: { width: ancho, height: alto, responses: [{ identifier: "default", format: { type: "image/png" } }] },
       evalscript: def.script
     };
-    const r = await fetch("https://sh.dataspace.copernicus.eu/api/v1/process", {
+    const r = await fetchSH("https://sh.dataspace.copernicus.eu/api/v1/process", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" },
       body: JSON.stringify(cuerpo)
@@ -453,6 +453,19 @@ function evaluatePixel(s){
   return {idx:[ndvi,ndwi,ndmi,bsi,agua,desnudo], dataMask:[(s.dataMask==1 && !nube)?1:0]};
 }`;
 
+// Sentinel Hub (CDSE) limita por minuto: ante un 429 espera lo que indica Retry-After (o 5, 10, 20 s) y reintenta
+const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const fetchSH = async (url: string, init: RequestInit) => {
+  let espera = 5000;
+  for (let intento = 0; ; intento++) {
+    const r = await fetch(url, init);
+    if (r.status !== 429 || intento >= 3) return r;
+    const ra = Number(r.headers.get("retry-after"));
+    await esperar(Math.min(25000, Number.isFinite(ra) && ra > 0 ? ra * 1000 : espera));
+    espera *= 2;
+  }
+};
+
 const circuloGeo = (lat: number, lon: number, radioM: number, n = 32) => {
   const coords: [number, number][] = [];
   for (let i = 0; i <= n; i++) {
@@ -479,7 +492,7 @@ const serieEstadistica = async (token: string, geom: any, desde: Date, hasta: Da
     },
     calculations: { default: {} }
   };
-  const r = await fetch("https://sh.dataspace.copernicus.eu/api/v1/statistics", {
+  const r = await fetchSH("https://sh.dataspace.copernicus.eu/api/v1/statistics", {
     method: "POST",
     headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
     body: JSON.stringify(cuerpo)
@@ -488,6 +501,7 @@ const serieEstadistica = async (token: string, geom: any, desde: Date, hasta: Da
   if (!r.ok) {
     let msg = txt.slice(0, 300);
     try { msg = JSON.parse(txt)?.error?.message || msg; } catch { /* texto */ }
+    if (r.status === 429) throw new Error("Sentinel Hub está limitando las consultas por minuto (cupo gratuito). Esperá un minuto y volvé a intentar.");
     throw new Error(`Sentinel Hub estadísticas (HTTP ${r.status}): ${msg}`);
   }
   const d = JSON.parse(txt);
@@ -586,13 +600,20 @@ const analizarPunto = async (lat: number, lon: number, radioM: number) => {
   };
 };
 
+const cacheAnalisis = new Map<string, { t: number; data: any }>();
 app.get("/api/analisis/suelo-agua", async (req, res) => {
   try {
     const lat = Number(req.query.lat);
     const lon = Number(req.query.lon);
     const radio = Math.min(3000, Math.max(100, Number(req.query.radio) || 500));
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ error: "Faltan lat y lon" });
-    return res.json(await analizarPunto(lat, lon, radio));
+    // El mismo punto no cambia en horas: caché en memoria y en la CDN para no gastar cupo de nuevo
+    const clave = `${lat.toFixed(4)}|${lon.toFixed(4)}|${radio}`;
+    const c = cacheAnalisis.get(clave);
+    const data = c && Date.now() - c.t < 6 * 3600000 ? c.data : await analizarPunto(lat, lon, radio);
+    if (!c || c.data !== data) { cacheAnalisis.set(clave, { t: Date.now(), data }); if (cacheAnalisis.size > 500) cacheAnalisis.delete(cacheAnalisis.keys().next().value!); }
+    res.set("Cache-Control", "public, s-maxage=21600, stale-while-revalidate=3600");
+    return res.json(data);
   } catch (e: any) {
     return res.status(502).json({ error: e.message || "Error en el análisis" });
   }
@@ -701,7 +722,7 @@ const mascaraDerrame = async (tipo: "suelo" | "agua", lat: number, lon: number, 
     output: { width: lado, height: lado, responses: [{ identifier: "default", format: { type: "image/png" } }] },
     evalscript: cfg.script("imagen")
   };
-  const r = await fetch("https://sh.dataspace.copernicus.eu/api/v1/process", {
+  const r = await fetchSH("https://sh.dataspace.copernicus.eu/api/v1/process", {
     method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" }, body: JSON.stringify(cuerpo)
   });
   if (!r.ok) {
@@ -785,7 +806,7 @@ app.get("/api/derrames", async (req, res) => {
         },
         calculations: { default: { statistics: { default: { percentiles: { k: [50] } } } } }
       };
-      const r = await fetch("https://sh.dataspace.copernicus.eu/api/v1/statistics", {
+      const r = await fetchSH("https://sh.dataspace.copernicus.eu/api/v1/statistics", {
         method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(cuerpo)
       });
       const txt = await r.text();

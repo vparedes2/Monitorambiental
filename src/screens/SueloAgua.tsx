@@ -107,6 +107,7 @@ export default function SueloAgua() {
   const [lote, setLote] = useState<{ inst: Instalacion; nivel: Nivel | "error"; detalle?: string }[]>([]);
   const [loteCorriendo, setLoteCorriendo] = useState(false);
   const [tanda, setTanda] = useState({ desde: 0, n: 0 });
+  const [pausa, setPausa] = useState(false);
   const [modo, setModo] = useState<"cambios" | "derrames" | "barrido">("cambios");
   const [tipoDerrame, setTipoDerrame] = useState<"suelo" | "agua">("suelo");
   const [resDerrame, setResDerrame] = useState<ResultadoDerrame | null>(null);
@@ -284,15 +285,23 @@ export default function SueloAgua() {
     const lista = catastro.filter((c) => !hechos.has(c.codigo_sig)).slice(0, TANDA);
     setTanda({ desde: lote.length, n: lista.length });
     for (const inst of lista) {
-      try {
-        const r = await fetch(`/api/analisis/suelo-agua?lat=${inst.latitud_oficial}&lon=${inst.longitud_oficial}&radio=${radio}`);
-        const d = await r.json();
-        if (!r.ok) throw new Error(d.error);
-        const peor = (d.indicadores as Indicador[]).filter((x) => x.nivel === d.nivel_general).map((x) => x.nombre).join(", ");
-        setLote((prev) => [...prev, { inst, nivel: d.nivel_general, detalle: d.nivel_general === "normal" ? undefined : peor }]);
-      } catch (e: any) {
-        setLote((prev) => [...prev, { inst, nivel: "error", detalle: e.message }]);
+      // Hasta 3 intentos: si Sentinel Hub limita por minuto, se espera y se reintenta el mismo punto
+      for (let intento = 0; ; intento++) {
+        try {
+          const r = await fetch(`/api/analisis/suelo-agua?lat=${inst.latitud_oficial.toFixed(4)}&lon=${inst.longitud_oficial.toFixed(4)}&radio=${radio}`);
+          const d = await r.json();
+          if (!r.ok) throw new Error(d.error);
+          const peor = (d.indicadores as Indicador[]).filter((x) => x.nivel === d.nivel_general).map((x) => x.nombre).join(", ");
+          setLote((prev) => [...prev, { inst, nivel: d.nivel_general, detalle: d.nivel_general === "normal" ? undefined : peor }]);
+          break;
+        } catch (e: any) {
+          const limite = /limitando|429|rate limit/i.test(e.message || "");
+          if (limite && intento < 2) { setPausa(true); await new Promise((ok) => setTimeout(ok, 45000)); setPausa(false); continue; }
+          setLote((prev) => [...prev, { inst, nivel: "error", detalle: e.message }]);
+          break;
+        }
       }
+      await new Promise((ok) => setTimeout(ok, 1500)); // ritmo que entra en el cupo por minuto
     }
     setLoteCorriendo(false);
   };
@@ -410,7 +419,7 @@ export default function SueloAgua() {
                         className="mt-2 flex items-center gap-2 px-3 py-2 text-sm border border-lutita text-lutita disabled:opacity-60">
                         {loteCorriendo && <Loader2 className="w-4 h-4 animate-spin" />}
                         {loteCorriendo
-                          ? `Analizando ${Math.min(hechos - tanda.desde + 1, tanda.n)} de ${tanda.n}…`
+                          ? pausa ? "Esperando cupo de Sentinel Hub (un minuto)…" : `Analizando ${Math.min(hechos - tanda.desde + 1, tanda.n)} de ${tanda.n}…`
                           : `${hechos ? "Seguir con" : "Analizar"} ${tipo} ${hechos + 1} a ${hechos + resta} de ${total} (radio ${radio} m)`}
                       </button>
                     )}
@@ -669,7 +678,7 @@ function BarridoRio({ map }: { map: MLMap }) {
           dibujar(ts, acumulado);
         }
       };
-      await Promise.all([trabajador(), trabajador(), trabajador()]);
+      await Promise.all([trabajador(), trabajador()]);
     } catch (e: any) {
       setError(e.message);
     } finally {
