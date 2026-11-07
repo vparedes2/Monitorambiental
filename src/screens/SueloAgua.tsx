@@ -76,9 +76,14 @@ export default function SueloAgua() {
       ? sig.sumideros.filter((x) => x.estado !== "Abandonado").map((x, i) => ({ codigo_sig: `sum-${i}-${x.nombre}`, nombre_oficial: `${x.nombre ?? "Sumidero"} · ${x.area ?? ""}`, latitud_oficial: x.lat, longitud_oficial: x.lon, operador: x.operador }))
       : sig.instalaciones.map((x, i) => ({ codigo_sig: x.id ?? `inst-${i}`, nombre_oficial: `${x.nombre ?? x.sigla ?? "Instalación"} · ${x.tipo ?? ""}`, latitud_oficial: x.lat, longitud_oficial: x.lon, operador: x.operador }));
   const operadoresLote = [...new Set(listaFuente.map((x) => x.operador).filter(Boolean) as string[])].sort();
+  const [buscarLote, setBuscarLote] = useState("");
   const catastro = listaFuente.filter((x) => operadorLote === "todas" || x.operador === operadorLote);
+  const visiblesLote = buscarLote.trim()
+    ? catastro.filter((c) => `${c.nombre_oficial} ${c.operador ?? ""}`.toLowerCase().includes(buscarLote.trim().toLowerCase()))
+    : catastro;
   const [lote, setLote] = useState<{ inst: Instalacion; nivel: Nivel | "error"; detalle?: string }[]>([]);
   const [loteCorriendo, setLoteCorriendo] = useState(false);
+  const [tanda, setTanda] = useState({ desde: 0, n: 0 });
   const [modo, setModo] = useState<"cambios" | "derrames" | "barrido">("cambios");
   const [tipoDerrame, setTipoDerrame] = useState<"suelo" | "agua">("suelo");
   const [resDerrame, setResDerrame] = useState<ResultadoDerrame | null>(null);
@@ -246,8 +251,10 @@ export default function SueloAgua() {
 
   const analizarCatastro = async () => {
     setLoteCorriendo(true);
-    const lista = catastro.slice(0, 20);
-    setLote([]);
+    // Tandas de 20 para cuidar el cupo de Sentinel Hub: cada clic sigue con los 20 siguientes sin analizar
+    const hechos = new Set(lote.map((l) => l.inst.codigo_sig));
+    const lista = catastro.filter((c) => !hechos.has(c.codigo_sig)).slice(0, TANDA);
+    setTanda({ desde: lote.length, n: lista.length });
     for (const inst of lista) {
       try {
         const r = await fetch(`/api/analisis/suelo-agua?lat=${inst.latitud_oficial}&lon=${inst.longitud_oficial}&radio=${radio}`);
@@ -345,7 +352,7 @@ export default function SueloAgua() {
 
         <div className="p-5 border-t border-linea">
           <h2 className="titulo text-2xl font-semibold flex items-center gap-2"><ListChecks className="w-5 h-5 text-lutita" /> Análisis por instalación</h2>
-          <p className="text-sm text-tenue mt-1">Corre el análisis de cambios sobre hasta 20 puntos del registro provincial de Neuquén.</p>
+          <p className="text-sm text-tenue mt-1">Corre el análisis de cambios sobre los puntos del registro provincial de Neuquén, en tandas de {TANDA} para no agotar el cupo satelital.</p>
           <div className="mt-3 flex flex-wrap gap-2">
             <div className="flex text-xs border border-linea" role="group" aria-label="Qué analizar">
               {([["sumideros", "Sumideros"], ["instalaciones", "Instalaciones"], ["propio", "Mi KML"]] as const).map(([id, txt]) => (
@@ -364,13 +371,30 @@ export default function SueloAgua() {
             <p className="text-sm text-tenue mt-3">{fuenteLote === "propio" ? "Todavía no cargaste un KML propio. Podés subirlo en la pantalla Focos." : sig.cargando ? "Cargando el registro provincial…" : "No hay puntos para este filtro."}</p>
           ) : (
             <>
-              <button onClick={analizarCatastro} disabled={loteCorriendo}
-                className="mt-3 flex items-center gap-2 px-3 py-2 text-sm border border-lutita text-lutita disabled:opacity-60">
-                {loteCorriendo && <Loader2 className="w-4 h-4 animate-spin" />}
-                {loteCorriendo ? `Analizando ${lote.length + 1} de ${Math.min(20, catastro.length)}…` : `Analizar ${Math.min(20, catastro.length)} ${fuenteLote === "sumideros" ? "sumideros" : "instalaciones"} (radio ${radio} m)`}
-              </button>
+              {(() => {
+                const tipo = fuenteLote === "sumideros" ? "sumideros" : "instalaciones";
+                const hechos = lote.length, total = catastro.length, resta = Math.min(TANDA, total - hechos);
+                return (
+                  <>
+                    <p className="text-sm mt-3"><span className="num">{total}</span> {tipo} en el registro{operadorLote !== "todas" ? ` de ${operadorLote}` : ""}{hechos ? <>, <span className="num">{hechos}</span> analizados</> : null}.</p>
+                    {resta > 0 && (
+                      <button onClick={analizarCatastro} disabled={loteCorriendo}
+                        className="mt-2 flex items-center gap-2 px-3 py-2 text-sm border border-lutita text-lutita disabled:opacity-60">
+                        {loteCorriendo && <Loader2 className="w-4 h-4 animate-spin" />}
+                        {loteCorriendo
+                          ? `Analizando ${Math.min(hechos - tanda.desde + 1, tanda.n)} de ${tanda.n}…`
+                          : `${hechos ? "Seguir con" : "Analizar"} ${tipo} ${hechos + 1} a ${hechos + resta} de ${total} (radio ${radio} m)`}
+                      </button>
+                    )}
+                  </>
+                );
+              })()}
+              {catastro.length > 8 && (
+                <input type="search" value={buscarLote} onChange={(e) => setBuscarLote(e.target.value)} placeholder="Buscar por nombre o área"
+                  className="mt-3 w-full bg-noche border border-linea text-sm px-3 py-2" aria-label="Buscar en la lista" />
+              )}
               <ul className="mt-3 divide-y divide-linea">
-                {catastro.slice(0, 50).map((c) => {
+                {visiblesLote.slice(0, 300).map((c) => {
                   const r = lote.find((l) => l.inst.codigo_sig === c.codigo_sig);
                   return (
                     <li key={c.codigo_sig}>
@@ -524,6 +548,8 @@ interface ResTramo {
   nivel: Nivel | "pendiente" | "error";
   error?: string;
 }
+
+const TANDA = 20;
 
 function BarridoRio({ map }: { map: MLMap }) {
   const [zona, setZona] = useState("anelo");
