@@ -470,7 +470,7 @@ app.get("/api/imagen", requiere("catalogo"), async (req, res) => {
     }
     const buf = Buffer.from(await r.arrayBuffer());
     res.setHeader("Content-Type", "image/png");
-    res.setHeader("Cache-Control", "public, max-age=1800");
+    res.setHeader("Cache-Control", "private, max-age=1800");
     res.setHeader("X-Periodo", `${desde.toISOString()}/${hasta.toISOString()}`);
     return res.send(buf);
   } catch (e: any) {
@@ -693,7 +693,7 @@ app.get("/api/analisis/suelo-agua", requiere("suelo.cambios", "suelo.lote", "sue
     const c = cacheAnalisis.get(clave);
     const data = c && Date.now() - c.t < 6 * 3600000 ? c.data : await analizarPunto(lat, lon, radio);
     if (!c || c.data !== data) { cacheAnalisis.set(clave, { t: Date.now(), data }); if (cacheAnalisis.size > 500) cacheAnalisis.delete(cacheAnalisis.keys().next().value!); }
-    res.set("Cache-Control", "public, s-maxage=21600, stale-while-revalidate=3600");
+    res.set("Cache-Control", "private, max-age=3600");
     return res.json(data);
   } catch (e: any) {
     return res.status(502).json({ error: e.message || "Error en el análisis" });
@@ -998,6 +998,92 @@ app.get("/api/derrames", requiere("suelo.derrame_suelo", "suelo.derrame_agua", "
   }
 });
 
+// ---------------------------------------------------------------------------
+// Confirmación de un foco térmico con Sentinel-2 (20 m)
+// El píxel de VIIRS mide 375 m; Sentinel-2 permite ubicar la llama dentro de ese píxel.
+// Píxel caliente según los índices normalizados de Marchese y otros (2019):
+//   NHI_SWIR = (B12 − B11)/(B12 + B11) > 0  y  NHI_SWNIR = (B11 − B8A)/(B11 + B8A) > 0, o B12 saturado.
+// Solo ve llamas encendidas en el momento de la pasada (10:30 hora local, cada 5 días aprox.).
+// ---------------------------------------------------------------------------
+const SCRIPT_CALOR = `//VERSION=3
+function setup(){return{input:[{bands:["B8A","B11","B12","dataMask"]}],output:{bands:4,sampleType:"UINT8"}}}
+function evaluatePixel(s){
+  const swir=(s.B12-s.B11)/(s.B12+s.B11+1e-6), swnir=(s.B11-s.B8A)/(s.B11+s.B8A+1e-6);
+  const caliente=(swir>0 && swnir>0 && s.B12>0.1) || s.B12>=1.0;
+  // Color falso B12-B11-B8A (la llama sale amarilla o roja brillante) y en el cuarto canal la marca de calor
+  return [Math.min(255,s.B12*255*2.2), Math.min(255,s.B11*255*2.2), Math.min(255,s.B8A*255*2.2), s.dataMask? (caliente?255:200) : 0];
+}`;
+app.get("/api/confirmar-foco", requiere("instalaciones", "focos"), async (req, res) => {
+  try {
+    const lat = Number(req.query.lat), lon = Number(req.query.lon);
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ error: "Coordenadas inválidas" });
+    const fecha = req.query.fecha ? new Date(String(req.query.fecha).slice(0, 10)) : new Date();
+    const desde = new Date(fecha.getTime() - 8 * 86400000), hasta = new Date(Math.min(Date.now(), fecha.getTime() + 8 * 86400000));
+    const radio = 900; // cubre el píxel de VIIRS y su error de ubicación
+    const bbox = bboxCirculo(lat, lon, radio);
+    const token = await obtenerTokenCdse();
+    // Pasadas de Sentinel-2 en la ventana, de la más cercana a la fecha del foco
+    const cat = await fetchSH("https://sh.dataspace.copernicus.eu/api/v1/catalog/1.0.0/search", {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ collections: ["sentinel-2-l2a"], bbox, datetime: `${desde.toISOString()}/${hasta.toISOString()}`, limit: 20, fields: { include: ["properties.datetime", "properties.eo:cloud_cover"] } })
+    });
+    if (!cat.ok) return res.status(502).json({ error: `Catálogo de Sentinel-2 (HTTP ${cat.status})` });
+    const items = ((await cat.json()).features || []).map((f: any) => ({ fecha: String(f.properties.datetime), nubes: f.properties["eo:cloud_cover"] ?? null }));
+    const dias = [...new globalThis.Map(items.filter((i: any) => i.nubes === null || i.nubes < 60).map((i: any) => [i.fecha.slice(0, 10), i])).values()] as any[];
+    dias.sort((a, b) => Math.abs(new Date(a.fecha).getTime() - fecha.getTime()) - Math.abs(new Date(b.fecha).getTime() - fecha.getTime()));
+    const pasadas: any[] = [];
+    const lado = Math.round((2 * radio) / 20);
+    for (const d of dias.slice(0, 3)) {
+      const dia = d.fecha.slice(0, 10);
+      const cuerpo = {
+        input: { bounds: { bbox, properties: { crs: "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } },
+          data: [{ type: "sentinel-2-l2a", dataFilter: { timeRange: { from: `${dia}T00:00:00Z`, to: `${dia}T23:59:59Z` }, mosaickingOrder: "leastCC" } }] },
+        output: { width: lado, height: lado, responses: [{ identifier: "default", format: { type: "image/png" } }] },
+        evalscript: SCRIPT_CALOR
+      };
+      const r = await fetchSH("https://sh.dataspace.copernicus.eu/api/v1/process", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" }, body: JSON.stringify(cuerpo) });
+      if (!r.ok) continue;
+      const img = decodificarPng(new Uint8Array(await r.arrayBuffer()));
+      const W = img.width, H = img.height, ch = img.channels, px = img.data as Uint8Array;
+      const [w0, s0, e0, n0] = bbox;
+      const calientes: { lat: number; lon: number; brillo: number }[] = [];
+      let validos = 0;
+      const vista = new Uint8Array(W * H * 4);
+      for (let i = 0; i < W * H; i++) {
+        const o = i * ch, a = px[o + 3];
+        if (a > 0) validos++;
+        vista.set([px[o], px[o + 1], px[o + 2], a > 0 ? 255 : 0], i * 4);
+        if (a === 255) {
+          const x = i % W, y = Math.floor(i / W);
+          calientes.push({ lon: +(w0 + ((x + 0.5) / W) * (e0 - w0)).toFixed(5), lat: +(n0 - ((y + 0.5) / H) * (n0 - s0)).toFixed(5), brillo: px[o] });
+          vista.set([255, 60, 30, 255], i * 4);
+        }
+      }
+      pasadas.push({
+        fecha: d.fecha, nubes: d.nubes, cobertura: Math.round((validos / (W * H)) * 100),
+        calientes: calientes.sort((a, b) => b.brillo - a.brillo).slice(0, 25),
+        imagen: `data:image/png;base64,${Buffer.from(codificarPng({ width: W, height: H, data: vista, channels: 4 })).toString("base64")}`
+      });
+      if (calientes.length) break; // con una pasada que confirma alcanza
+    }
+    const conf = pasadas.find((p) => p.calientes.length);
+    res.set("Cache-Control", "private, max-age=3600");
+    return res.json({
+      punto: { lat, lon }, bbox, radio_m: radio,
+      resultado: conf ? "confirmado" : pasadas.length ? "no_visible" : "sin_pasadas",
+      lectura: conf
+        ? `Sentinel-2 ve ${conf.calientes.length} píxel${conf.calientes.length > 1 ? "es" : ""} caliente${conf.calientes.length > 1 ? "s" : ""} de 20 m el ${conf.fecha.slice(0, 10)}: la llama queda ubicada dentro del píxel de VIIRS.`
+        : pasadas.length
+          ? "En las pasadas de Sentinel-2 cercanas no se ve una llama. No descarta el foco: la antorcha pudo estar apagada a las 10:30, la hora de la pasada."
+          : "No hay pasadas de Sentinel-2 sin nubes en los 8 días alrededor del foco.",
+      pasadas,
+      metodo: "Sentinel-2 L2A a 20 m, bandas B8A, B11 y B12. Píxel caliente: NHI_SWIR > 0 y NHI_SWNIR > 0 con B12 > 0,1, o B12 saturado (Marchese y otros, Remote Sensing, 2019). Imagen en color falso B12-B11-B8A con los píxeles calientes en rojo."
+    });
+  } catch (e: any) {
+    return res.status(502).json({ error: e.message || "No se pudo consultar Sentinel-2" });
+  }
+});
+
 app.get("/api/derrames/imagen", requiere("suelo.derrame_suelo", "suelo.derrame_agua"), async (req, res) => {
   try {
     const tipo = req.query.tipo === "agua" ? "agua" : "suelo";
@@ -1011,7 +1097,7 @@ app.get("/api/derrames/imagen", requiere("suelo.derrame_suelo", "suelo.derrame_a
     const c = cacheMascara.get(clave);
     const png = c && Date.now() - c.t < 1800000 ? c.png : (await mascaraDerrame(tipo, lat, lon, radio, umbral, techo)).png;
     res.setHeader("Content-Type", "image/png");
-    res.setHeader("Cache-Control", "public, max-age=1800");
+    res.setHeader("Cache-Control", "private, max-age=1800");
     return res.send(png);
   } catch (e: any) {
     return res.status(502).json({ error: e.message || "Error generando la imagen" });
@@ -1209,6 +1295,30 @@ const CAPAS_NQN: Record<string, () => Promise<any>> = {
     id: limpio(p.ID_DUCTO), nombre: limpio(p.NOMBRE), fluido: limpio(p.FLUIDO), tipo: limpio(p.TIPO), operador: limpio(p.OPERADOR),
     diametro_pulg: p.DIAMETRO ?? null, longitud_km: p.DISTANCIA ?? null, estado: limpio(p.ESTADO), desde: limpio(p.DESDE), hasta: limpio(p.HASTA)
   }))
+};
+
+// El monitor de Focos usa el registro provincial de instalaciones por defecto (sin pedir un KML).
+// Si el usuario sube su propio catastro, se suma al provincial.
+let origenCatastro: "provincial" | "usuario" | "vacio" = "vacio";
+let cargandoCatastro: Promise<void> | null = null;
+const asegurarCatastroProvincial = async () => {
+  if (getInstalacionesSigOficiales().length > 0) return;
+  cargandoCatastro ??= (async () => {
+    try {
+      const fc = await CAPAS_NQN.instalaciones();
+      ingestarCapaGeoJson({ type: "FeatureCollection", features: (fc.features || []).map((f: any) => ({
+        type: "Feature", geometry: f.geometry,
+        properties: {
+          id: `nqn-${f.properties.id ?? f.properties.sigla}`, nombre: f.properties.nombre ?? f.properties.sigla, tipo: f.properties.tipo ?? "Instalación",
+          operador: f.properties.operador, bloque_area: f.properties.area, radio_tolerancia_metros: 1000,
+          descripcion_catastral: `Registro oficial de instalaciones, Subsecretaría de Energía de Neuquén${f.properties.venteo ? `. Venteo declarado: ${f.properties.venteo}` : ""}.`
+        }
+      })) }, "replace");
+      origenCatastro = "provincial";
+    } catch { /* sin registro provincial: queda vacío hasta que el usuario cargue un KML */ }
+    finally { cargandoCatastro = null; }
+  })();
+  await cargandoCatastro;
 };
 
 app.get("/api/neuquen/capa/:capa", async (req, res) => {
@@ -1846,11 +1956,13 @@ app.post("/api/validar-posicion-planta", (req, res) => {
 });
 
 // Endpoint oficial del Geoportal SIG Hidrocarburífero (Almacén GeoJSON dinámico)
-app.get("/api/geoportal/instalaciones", (_req, res) => {
+app.get("/api/geoportal/instalaciones", async (_req, res) => {
+  await asegurarCatastroProvincial();
   const store = getGeoJsonStore();
   const instalaciones = getInstalacionesSigOficiales();
   return res.json({
-    fuente: "Catastro cargado por el usuario (KML / GeoJSON)",
+    origen: origenCatastro,
+    fuente: origenCatastro === "provincial" ? "Registro oficial de instalaciones, Subsecretaría de Energía de Neuquén" : "Catastro cargado por el usuario (KML / GeoJSON)",
     alcance: "Cuenca Neuquina Activa (Vaca Muerta)",
     total_instalaciones: instalaciones.length,
     geojson_store: store,
@@ -1863,6 +1975,7 @@ app.post("/api/geoportal/cargar-capa", requiere("focos.kml"), (req, res) => {
   try {
     const { geojson, mode = "merge" } = req.body || {};
     const payload = geojson !== undefined ? geojson : req.body;
+    if (mode === "replace" || origenCatastro !== "usuario") origenCatastro = mode === "replace" ? "usuario" : origenCatastro;
     const resultado = ingestarCapaGeoJson(payload, mode);
     guardarCatastro();
     const crucesActualizados = ejecutarCruceEspacialSatelital();
@@ -1890,6 +2003,7 @@ app.post("/api/geoportal/cargar-capa", requiere("focos.kml"), (req, res) => {
 // Endpoint POST para restablecer el catastro a la base oficial
 app.post("/api/geoportal/reset", requiere("focos.kml"), (_req, res) => {
   const store = resetToOfficialDefaults();
+  origenCatastro = "vacio";
   guardarCatastro();
   const cruces = ejecutarCruceEspacialSatelital();
   return res.json({
@@ -1975,6 +2089,7 @@ app.get("/api/orbitas/tle", async (_req, res) => {
 
 // Endpoint de Monitoreo Satelital en Vivo y Cruce Espacial Automático (NASA FIRMS & Sentinel-2)
 app.get("/api/venteos/monitoreo-satelital-en-vivo", async (req, res) => {
+  await asegurarCatastroProvincial();
   const estado = await actualizarFirms(req.query.forzar === "1");
   const cruces = ejecutarCruceEspacialSatelital();
   const matches = cruces.filter(c => c.match_catastral);

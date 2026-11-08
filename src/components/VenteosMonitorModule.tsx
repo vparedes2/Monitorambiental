@@ -184,11 +184,14 @@ export default function VenteosMonitorModule() {
       if (resSig.ok) {
         const sigData = await resSig.json();
         const local = leerCatastroLocal();
-        if ((sigData.instalaciones?.length || 0) === 0 && local?.features?.length) {
+        // El servidor arranca con el registro provincial; el catastro propio del usuario se le suma si falta
+        const codigos = new Set((sigData.instalaciones || []).map((i: any) => String(i.codigo_sig)));
+        const faltaLocal = local?.features?.some((f: any) => !codigos.has(String(f.properties?.id ?? f.id ?? "")));
+        if (local?.features?.length && (sigData.instalaciones?.length || 0) === 0 || (faltaLocal && sigData.origen === "provincial")) {
           const r = await fetch("/api/geoportal/cargar-capa", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ geojson: local, mode: "replace" })
+            body: JSON.stringify({ geojson: local, mode: sigData.origen === "provincial" ? "merge" : "replace" })
           });
           const d = await r.json();
           if (d.instalaciones) setInstalacionesSig(d.instalaciones);
@@ -1652,7 +1655,7 @@ export default function VenteosMonitorModule() {
                 disabled={uploadLoading}
                 className="px-3 py-2 bg-slate-900 hover:bg-slate-850 border border-slate-800 text-slate-300 text-xs font-mono rounded-xl transition-colors cursor-pointer"
               >
-                Vaciar catastro
+                Quitar mi catastro (volver al registro provincial)
               </button>
 
               <div className="flex items-center gap-2">

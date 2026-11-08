@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useInyeccion, leerIny, COHERENCIA, type InyPozo, type InyDatos } from "../lib/inyeccion";
 import { useSesion } from "../lib/sesion";
-import { areaDe } from "../lib/neuquen";
+import { areaDe, distM } from "../lib/neuquen";
 import { indexar, buscarPorPartes, usePozosNeuquen, type PozoIdx } from "../lib/buscar";
 import type { Map as MLMap } from "maplibre-gl";
+import type maplibregl from "maplibre-gl";
 import { motion, AnimatePresence } from "motion/react";
 import { FileDown, Search, X } from "lucide-react";
 import Globo, { setGeo, enfocar } from "../components/Globo";
@@ -60,7 +61,7 @@ const LEYENDA: ItemLeyenda[] = [
   { color: "#C9A46A", texto: "Ducto troncal", forma: "linea" }
 ];
 
-type Seleccion = { tipo: string; titulo: string; datos: [string, string | number | null | undefined][]; lat: number; lon: number; idNacion?: string | null };
+type Seleccion = { tipo: string; titulo: string; datos: [string, string | number | null | undefined][]; lat: number; lon: number; idNacion?: string | null; fecha?: string };
 
 export default function Instalaciones() {
   const sig = useSigNeuquen();
@@ -238,7 +239,7 @@ export default function Instalaciones() {
     clic("x-ductos", (p, c) => ({ tipo: "Ducto troncal", titulo: p.nombre || "Ducto", lat: c[1], lon: c[0], datos: [
       ["Fluido", p.fluido], ["Operadora", p.operador], ["Desde", p.desde], ["Hasta", p.hasta], ["Diámetro (pulg)", p.diametro_pulg], ["Longitud (km)", p.longitud_km], ["Estado", p.estado]
     ] }));
-    clic("x-focos", (p, c) => ({ tipo: "Foco térmico FIRMS", titulo: `${Number(p.frp).toFixed(1)} MW`, lat: c[1], lon: c[0], datos: [
+    clic("x-focos", (p, c) => ({ tipo: "Foco térmico FIRMS", titulo: `${Number(p.frp).toFixed(1)} MW`, lat: c[1], lon: c[0], fecha: String(p.fecha || ""), datos: [
       ["Clasificación", CLASES[p.clase as Clase]?.nombre], ["Fecha", p.fecha], ["Sensor", p.sensor], ["Venteo autorizado más cercano", p.venteo], ["Instalación más cercana", p.inst], ["Área", p.area]
     ] }));
     setListo(true);
@@ -359,6 +360,7 @@ export default function Instalaciones() {
                   <div key={k} className="flex justify-between gap-3"><dt className="text-tenue shrink-0">{k}</dt><dd className="text-right">{typeof v === "number" ? v.toLocaleString("es-AR") : v}</dd></div>
                 ))}
               </dl>
+              {sel.tipo === "Foco térmico FIRMS" && mapRef.current && <ConfirmarS2 {...{ key: `${sel.lat},${sel.lon}` }} lat={sel.lat} lon={sel.lon} fecha={sel.fecha} mapa={mapRef.current} instalaciones={sig.instalaciones} venteos={sig.venteos} />}
               {sel.idNacion && iny && (puede("instalaciones.nacion") || puede("instalaciones.tabla")) && <FichaInyeccion p={iny.pozos[sel.idNacion]} datos={iny} />}
               <div className="mt-3 flex gap-2 text-xs">
                 <button onClick={() => ir(sel.lat, sel.lon)} className="flex-1 px-2 py-1.5 border border-linea text-hielo hover:border-hielo">Acercar</button>
@@ -525,6 +527,62 @@ function FichaInyeccion({ p, datos }: { p?: InyPozo; datos: InyDatos }) {
       </dl>
       <p className={`mt-2 text-[11px] leading-snug ${color}`}>{l.texto}</p>
       <p className="mt-1 text-[10px] text-tenue">Capítulo IV, Secretaría de Energía. Datos hasta {l.nombreMes(p.m3.length - 1)}.</p>
+    </div>
+  );
+}
+
+/** Confirmación del foco con Sentinel-2: ubica la llama a 20 m y la asocia por distancia (150 m / 1 km) */
+function ConfirmarS2({ lat, lon, fecha, mapa, instalaciones, venteos }: { key?: string; lat: number; lon: number; fecha?: string; mapa: MLMap; instalaciones: any[]; venteos: any[] }) {
+  const [estado, setEstado] = useState<"inicio" | "cargando" | "listo" | "error">("inicio");
+  const [r, setR] = useState<any>(null);
+  const [err, setErr] = useState("");
+  useEffect(() => () => { if (mapa.getLayer("s2conf")) mapa.removeLayer("s2conf"); if (mapa.getSource("s2conf")) mapa.removeSource("s2conf"); }, [mapa]);
+  const correr = async () => {
+    setEstado("cargando");
+    try {
+      const resp = await fetch(`/api/confirmar-foco?lat=${lat.toFixed(5)}&lon=${lon.toFixed(5)}${fecha ? `&fecha=${fecha.slice(0, 10)}` : ""}`);
+      const d = await resp.json();
+      if (!resp.ok) throw new Error(d.error);
+      setR(d); setEstado("listo");
+      const p = d.pasadas.find((x: any) => x.calientes.length) ?? d.pasadas[0];
+      if (p) {
+        const [w, s, e, n] = d.bbox;
+        const coords: [[number, number], [number, number], [number, number], [number, number]] = [[w, n], [e, n], [e, s], [w, s]];
+        const src = mapa.getSource("s2conf") as maplibregl.ImageSource | undefined;
+        if (src) src.updateImage({ url: p.imagen, coordinates: coords });
+        else { mapa.addSource("s2conf", { type: "image", url: p.imagen, coordinates: coords }); mapa.addLayer({ id: "s2conf", type: "raster", source: "s2conf", paint: { "raster-opacity": 0.9, "raster-resampling": "nearest" } }); }
+        mapa.flyTo({ center: [lon, lat], zoom: 14, duration: 900 });
+      }
+    } catch (e: any) { setErr(e.message); setEstado("error"); }
+  };
+  // Distancia de la llama más brillante a la instalación o venteo más cercano
+  const asociar = () => {
+    const c = r?.pasadas?.find((x: any) => x.calientes.length)?.calientes?.[0];
+    if (!c) return null;
+    let mejor: { nombre: string; d: number } | null = null;
+    for (const i of [...instalaciones.map((x) => ({ nombre: x.nombre ?? x.sigla, lat: x.lat, lon: x.lon })), ...venteos.map((v) => ({ nombre: `${v.instalacion} (venteo autorizado)`, lat: v.lat, lon: v.lon }))]) {
+      const d = distM(c.lat, c.lon, i.lat, i.lon);
+      if (!mejor || d < mejor.d) mejor = { nombre: i.nombre, d };
+    }
+    if (!mejor) return null;
+    return mejor.d <= 150 ? { color: "text-ok", t: `En la instalación: ${mejor.nombre} (${Math.round(mejor.d)} m).` }
+      : mejor.d <= 1000 ? { color: "text-aviso", t: `En el entorno de ${mejor.nombre} (${Math.round(mejor.d)} m): servidumbre, ducto o equipo auxiliar.` }
+      : { color: "text-llama", t: `Sin infraestructura conocida a menos de 1 km (la más cercana: ${mejor.nombre}, a ${(mejor.d / 1000).toFixed(1)} km).` };
+  };
+  const a = estado === "listo" ? asociar() : null;
+  return (
+    <div className="mt-3 border-t border-linea pt-3">
+      {estado === "inicio" && <button onClick={correr} className="w-full px-3 py-2 text-xs border border-hielo text-hielo hover:bg-hielo hover:text-noche">Confirmar con Sentinel-2 (20 m)</button>}
+      {estado === "cargando" && <p className="text-xs text-tenue">Buscando pasadas de Sentinel-2 cerca de la fecha del foco…</p>}
+      {estado === "error" && <p className="text-xs text-llama">{err}</p>}
+      {estado === "listo" && r && (
+        <div className="space-y-2 text-xs">
+          <p className={r.resultado === "confirmado" ? "text-ok font-medium" : "text-tenue"}>{r.resultado === "confirmado" ? "Llama confirmada" : r.resultado === "no_visible" ? "No se ve llama en la pasada" : "Sin pasadas útiles"}</p>
+          <p className="leading-snug">{r.lectura}</p>
+          {a && <p className={`leading-snug ${a.color}`}>{a.t}</p>}
+          {r.pasadas.length > 0 && <p className="text-[10px] text-tenue">Pasadas revisadas: {r.pasadas.map((p: any) => `${p.fecha.slice(0, 10)} (${p.calientes.length} calientes)`).join(", ")}. En el mapa: color falso infrarrojo, la llama en rojo.</p>}
+        </div>
+      )}
     </div>
   );
 }
