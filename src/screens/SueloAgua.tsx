@@ -274,6 +274,26 @@ export default function SueloAgua() {
   // Si cambia el punto o el radio, la capa ya no corresponde
   useEffect(() => { cerrarMapaIdx(); }, [punto?.lat, punto?.lon, radio, modo]);
 
+  // Números sobre el mapa para las manchas listadas (derrames o manchas en loma), visibles al acercarse
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !listo) return;
+    const lista: { lat: number; lon: number }[] =
+      modo === "derrames" ? resDerrame?.manchas || [] : mapaIdx?.data?.terreno?.aplica ? mapaIdx.data.terreno.manchas_loma : [];
+    const color = modo === "derrames" ? "#FF2619" : "#E8553A";
+    const marcas = lista.map((m, k) => {
+      const el = document.createElement("div");
+      el.textContent = String(k + 1);
+      el.setAttribute("aria-label", `Mancha ${k + 1}`);
+      el.style.cssText = `width:22px;height:22px;border-radius:50%;background:${color};color:#fff;font:600 12px/22px 'IBM Plex Mono',monospace;text-align:center;border:2px solid #12100E;box-shadow:0 1px 4px rgba(0,0,0,.5);pointer-events:none`;
+      return new maplibregl.Marker({ element: el }).setLngLat([m.lon, m.lat]).addTo(map);
+    });
+    const mostrar = () => { const v = map.getZoom() >= 12 ? "" : "none"; marcas.forEach((mk) => { mk.getElement().style.display = v; }); };
+    mostrar();
+    map.on("zoom", mostrar);
+    return () => { map.off("zoom", mostrar); marcas.forEach((mk) => mk.remove()); };
+  }, [listo, modo, resDerrame, mapaIdx?.data]);
+
   const analizar = async (p = punto, r = radio) => {
     if (!p) return;
     const map = mapRef.current;
