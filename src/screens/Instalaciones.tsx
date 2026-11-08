@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useInyeccion, leerIny, COHERENCIA, type InyPozo, type InyDatos } from "../lib/inyeccion";
 import { useSesion } from "../lib/sesion";
 import { areaDe } from "../lib/neuquen";
+import { indexar, buscarPorPartes, usePozosNeuquen, type PozoIdx } from "../lib/buscar";
 import type { Map as MLMap } from "maplibre-gl";
 import { motion, AnimatePresence } from "motion/react";
 import { FileDown, Search, X } from "lucide-react";
@@ -153,11 +154,33 @@ export default function Instalaciones() {
     .filter((v) => filtroVent === "todos" || (filtroVent === "vencido" ? !v.vigente : filtroVent === "detectado" ? v.vigente && v.detecciones > 0 : v.vigente && v.detecciones === 0))
     .sort((a, b) => b.detecciones - a.detecciones || (b.venteo.m3_dia_autorizado ?? 0) - (a.venteo.m3_dia_autorizado ?? 0));
 
-  const resultados = useMemo(() => {
-    const q = busqueda.trim().toLowerCase();
+  // Buscador por partes: plantas, áreas y los 19.657 pozos del padrón nacional
+  const [buscadorUsado, setBuscadorUsado] = useState(false);
+  const pozosIdx = usePozosNeuquen(buscadorUsado);
+  type Resultado = { tipo: "planta" | "area" | "pozo"; titulo: string; detalle: string; lat: number; lon: number; abrir: () => void };
+  const indice = useMemo(() => {
+    const plantas = indexar(sig.instalaciones, (i: any) => ({ codigo: `${i.sigla ?? ""} ${i.nombre ?? ""}`, texto: `${i.nombre} ${i.sigla} ${i.area} ${i.operador} ${i.tipo}` }));
+    const areas = indexar((sig.areas?.features || []) as any[], (f) => ({ codigo: `${f.properties?.sigla ?? ""} ${f.properties?.nombre ?? ""}`, texto: `${f.properties?.nombre} ${f.properties?.operador}` }));
+    const pozos = indexar(pozosIdx?.pozos || [], (p: PozoIdx) => ({ codigo: p[0], texto: `${p[0]} ${p[2]} ${p[3]} ${pozosIdx!.tipos[p[4]] ?? ""}`, tipo: p[4], activo: !/abandon/i.test(p[5]) }));
+    return { plantas, areas, pozos };
+  }, [sig.instalaciones, sig.areas, pozosIdx]);
+  const resultados = useMemo<Resultado[]>(() => {
+    const q = busqueda.trim();
     if (q.length < 2) return [];
-    return sig.instalaciones.filter((i) => `${i.nombre} ${i.sigla} ${i.area} ${i.operador}`.toLowerCase().includes(q)).slice(0, 8);
-  }, [busqueda, sig.instalaciones]);
+    const plantas = buscarPorPartes(indice.plantas, q, 5).map((i: any) => ({ tipo: "planta" as const, titulo: i.nombre ?? i.sigla ?? "Instalación", detalle: `${i.tipo ?? "Instalación"} · ${i.area ?? ""} · ${i.operador ?? ""}`, lat: i.lat, lon: i.lon,
+      abrir: () => ir(i.lat, i.lon, { tipo: "Instalación declarada", titulo: i.nombre ?? "", lat: i.lat, lon: i.lon, datos: [["Tipo", i.tipo], ["Operadora", i.operador], ["Área", i.area], ["Estado", i.estado], ["Venteo declarado", i.venteo], ["Sistema de venteo", i.sistema_venteo]] }) }));
+    const pozos = buscarPorPartes(indice.pozos, q, 10).map((p) => {
+      const tipo = pozosIdx?.tipos[p[4]] ?? "Pozo";
+      return { tipo: "pozo" as const, titulo: p[0], detalle: `${tipo} · ${p[5]} · ${p[2]} · ${p[3]}`, lat: p[6], lon: p[7],
+        abrir: () => ir(p[6], p[7], { tipo: `Pozo (${tipo.toLowerCase()}), según el padrón nacional`, titulo: p[0], lat: p[6], lon: p[7], idNacion: String(p[1]),
+          datos: [["Operadora", p[3]], ["Área", p[2]], ["Tipo (Nación)", tipo], ["Estado (Nación)", p[5]], ["Id. nacional", p[1]]] }) };
+    });
+    const areas = buscarPorPartes(indice.areas, q, 3).map((f: any) => {
+      const n = f.properties?.nombre;
+      return { tipo: "area" as const, titulo: n, detalle: `Área · ${f.properties?.operador ?? ""}`, lat: 0, lon: 0, abrir: () => irArea(n) };
+    });
+    return [...pozos, ...plantas, ...areas].slice(0, 14);
+  }, [busqueda, indice]);
 
   // ---------------- Capas del mapa ----------------
   const alListo = (map: MLMap) => {
@@ -302,18 +325,20 @@ export default function Instalaciones() {
         </div>
 
         {/* Buscador */}
-        <div className="absolute right-4 top-4 w-[260px] max-w-[calc(100%-2rem)]">
+        <div className="absolute right-4 top-4 w-[320px] max-w-[calc(100%-2rem)] z-10">
           <label className="flex items-center gap-2 instrumento px-3 py-2">
             <Search className="w-4 h-4 text-tenue" />
-            <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} placeholder="Buscar planta, área u operadora" className="bg-transparent text-sm outline-none w-full placeholder:text-tenue" />
+            <input value={busqueda} onChange={(e) => setBusqueda(e.target.value)} onFocus={() => setBuscadorUsado(true)} placeholder="Buscar pozo, planta, área u operadora" className="bg-transparent text-sm outline-none w-full placeholder:text-tenue" />
           </label>
-          {resultados.length > 0 && (
-            <ul className="instrumento mt-1 divide-y divide-linea text-sm max-h-72 overflow-auto">
-              {resultados.map((i, k) => (
-                <li key={k}><button className="w-full text-left px-3 py-2 hover:bg-noche/50" onClick={() => { setBusqueda(""); ir(i.lat, i.lon, { tipo: "Instalación declarada", titulo: i.nombre ?? "", lat: i.lat, lon: i.lon, datos: [["Tipo", i.tipo], ["Operadora", i.operador], ["Área", i.area], ["Estado", i.estado], ["Venteo declarado", i.venteo], ["Sistema de venteo", i.sistema_venteo]] }); }}>
-                  <span className="block">{i.nombre}</span><span className="block text-xs text-tenue">{i.tipo} · {i.operador}</span>
+          {busqueda.trim().length >= 2 && (
+            <ul className="instrumento mt-1 divide-y divide-linea text-sm max-h-80 overflow-auto">
+              {resultados.map((r, k) => (
+                <li key={k}><button className="w-full text-left px-3 py-2 hover:bg-noche/50" onClick={() => { setBusqueda(""); r.abrir(); }}>
+                  <span className="flex items-baseline gap-2"><span className="text-[10px] uppercase tracking-wide text-hielo shrink-0">{r.tipo === "pozo" ? "Pozo" : r.tipo === "planta" ? "Planta" : "Área"}</span><span className="truncate">{r.titulo}</span></span>
+                  <span className="block text-xs text-tenue truncate">{r.detalle}</span>
                 </button></li>
               ))}
+              {resultados.length === 0 && <li className="px-3 py-2 text-xs text-tenue">{buscadorUsado && !pozosIdx ? "Cargando el padrón de pozos…" : "Sin coincidencias. Probá con una parte de la sigla (por ejemplo \"adv x1\") o el área."}</li>}
             </ul>
           )}
         </div>

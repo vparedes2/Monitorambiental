@@ -78,6 +78,15 @@ for k, r in c4.items():
 json.dump({"type": "FeatureCollection", "fuente": "Secretaría de Energía, padrón Capítulo IV", "features": feats},
           open(f"{RAIZ}/public/capas/sumideros-nacion.geojson", "w"), ensure_ascii=False, separators=(",", ":"))
 
+# Índice liviano de todos los pozos de Neuquén para el buscador
+TIPO = {"Petrolífero": "P", "Gasífero": "G", "Sumidero": "S", "Inyección de Agua": "IA", "Inyección de Gas": "IG", "Acuífero": "A", "Otro tipo": "O"}
+idx = []
+for r in filas_c4:
+    try: c = json.loads(r["geojson"])["coordinates"]
+    except Exception: continue
+    idx.append([r["sigla"].strip(), int(r["idpozo"]), r["area"].strip(), r["empresa"].strip(), TIPO.get(r["tipopozo"], "O"), r["tipoestado"].strip(), round(c[1], 5), round(c[0], 5)])
+json.dump({"tipos": {v: k for k, v in TIPO.items()}, "pozos": idx}, open(f"{RAIZ}/public/capas/pozos-neuquen.json", "w"), ensure_ascii=False, separators=(",", ":"))
+
 # Registro: extractos de Neuquén
 with open(f"{RAIZ}/data/nacion/neuquen-pozos-capitulo-iv.csv", "w", newline="") as fh:
     w = csv.DictWriter(fh, fieldnames=cols_c4); w.writeheader(); w.writerows(filas_c4)
