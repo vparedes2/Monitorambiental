@@ -115,9 +115,12 @@ export default function SueloAgua() {
   const operadoresLote = [...new Set(listaFuente.map((x) => x.operador).filter(Boolean) as string[])].sort();
   const [buscarLote, setBuscarLote] = useState("");
   const catastro = listaFuente.filter((x) => operadorLote === "todas" || x.operador === operadorLote);
+  // Rango elegido en el desplegable: -1 = seguir con los siguientes sin analizar
+  const [rango, setRango] = useState(-1);
+  const enRango = rango >= 0 ? catastro.slice(rango * TANDA, rango * TANDA + TANDA) : catastro;
   const visiblesLote = buscarLote.trim()
     ? catastro.filter((c) => `${c.nombre_oficial} ${c.operador ?? ""}`.toLowerCase().includes(buscarLote.trim().toLowerCase()))
-    : catastro;
+    : enRango;
   const [lote, setLote] = useState<{ inst: Instalacion; nivel: Nivel | "error"; detalle?: string }[]>([]);
   const [loteCorriendo, setLoteCorriendo] = useState(false);
   const [tanda, setTanda] = useState({ desde: 0, n: 0 });
@@ -303,7 +306,7 @@ export default function SueloAgua() {
     setLoteCorriendo(true);
     // Tandas de 20 para cuidar el cupo de Sentinel Hub: cada clic sigue con los 20 siguientes sin analizar
     const hechos = new Set(lote.map((l) => l.inst.codigo_sig));
-    const lista = catastro.filter((c) => !hechos.has(c.codigo_sig)).slice(0, TANDA);
+    const lista = enRango.filter((c) => !hechos.has(c.codigo_sig)).slice(0, TANDA);
     setTanda({ desde: lote.length, n: lista.length });
     for (const inst of lista) {
       // Hasta 3 intentos: si Sentinel Hub limita por minuto, se espera y se reintenta el mismo punto
@@ -414,12 +417,12 @@ export default function SueloAgua() {
           <div className="mt-3 flex flex-wrap gap-2">
             <div className="flex text-xs border border-linea" role="group" aria-label="Qué analizar">
               {([["sumideros", "Sumideros"], ["instalaciones", "Instalaciones"], ["propio", "Mi KML"]] as const).map(([id, txt]) => (
-                <button key={id} onClick={() => { setFuenteLote(id); setOperadorLote("todas"); setLote([]); }} aria-pressed={fuenteLote === id}
+                <button key={id} onClick={() => { setFuenteLote(id); setOperadorLote("todas"); setLote([]); setRango(-1); }} aria-pressed={fuenteLote === id}
                   className={`px-2.5 py-1.5 ${fuenteLote === id ? "bg-lutita text-noche" : "text-lutita hover:bg-noche/50"}`}>{txt}</button>
               ))}
             </div>
             {operadoresLote.length > 1 && (
-              <select value={operadorLote} onChange={(e) => { setOperadorLote(e.target.value); setLote([]); }} className="flex-1 min-w-[160px] bg-noche border border-linea text-xs px-2 py-1.5" aria-label="Operadora">
+              <select value={operadorLote} onChange={(e) => { setOperadorLote(e.target.value); setLote([]); setRango(-1); }} className="flex-1 min-w-[160px] bg-noche border border-linea text-xs px-2 py-1.5" aria-label="Operadora">
                 <option value="todas">Todas las operadoras</option>
                 {operadoresLote.map((o) => <option key={o} value={o}>{o}</option>)}
               </select>
@@ -431,17 +434,36 @@ export default function SueloAgua() {
             <>
               {(() => {
                 const tipo = fuenteLote === "sumideros" ? "sumideros" : "instalaciones";
-                const hechos = lote.length, total = catastro.length, resta = Math.min(TANDA, total - hechos);
+                const hechos = lote.length, total = catastro.length;
+                const hechosSet = new Set(lote.map((l) => l.inst.codigo_sig));
+                const pendRango = enRango.filter((c) => !hechosSet.has(c.codigo_sig)).length;
+                const resta = rango >= 0 ? pendRango : Math.min(TANDA, total - hechos);
+                const tandas = Math.ceil(total / TANDA);
+                const desdeR = rango * TANDA + 1, hastaR = Math.min(total, rango * TANDA + TANDA);
                 return (
                   <>
                     <p className="text-sm mt-3"><span className="num">{total}</span> {tipo} en el registro{operadorLote !== "todas" ? ` de ${operadorLote}` : ""}{hechos ? <>, <span className="num">{hechos}</span> analizados</> : null}.</p>
+                    {tandas > 1 && (
+                      <select value={rango} onChange={(e) => setRango(Number(e.target.value))} disabled={loteCorriendo}
+                        className="mt-2 w-full bg-noche border border-linea text-sm px-2 py-1.5" aria-label="Rango a analizar">
+                        <option value={-1}>Los siguientes {TANDA} sin analizar</option>
+                        {Array.from({ length: tandas }, (_, i) => {
+                          const a = i * TANDA, b = Math.min(total, a + TANDA);
+                          const listos = catastro.slice(a, b).filter((c) => hechosSet.has(c.codigo_sig)).length;
+                          return <option key={i} value={i}>{tipo[0].toUpperCase() + tipo.slice(1)} {a + 1} a {b}{listos ? ` (${listos === b - a ? "analizados" : `${listos} analizados`})` : ""}</option>;
+                        })}
+                      </select>
+                    )}
+                    {rango >= 0 && resta === 0 && !loteCorriendo && <p className="text-xs text-tenue mt-2">Este rango ya está analizado. Elegí otro en la lista.</p>}
                     {resta > 0 && (
                       <button onClick={analizarCatastro} disabled={loteCorriendo}
                         className="mt-2 flex items-center gap-2 px-3 py-2 text-sm border border-lutita text-lutita disabled:opacity-60">
                         {loteCorriendo && <Loader2 className="w-4 h-4 animate-spin" />}
                         {loteCorriendo
                           ? pausa ? "Esperando cupo de Sentinel Hub (un minuto)…" : `Analizando ${Math.min(hechos - tanda.desde + 1, tanda.n)} de ${tanda.n}…`
-                          : `${hechos ? "Seguir con" : "Analizar"} ${tipo} ${hechos + 1} a ${hechos + resta} de ${total} (radio ${radio} m)`}
+                          : rango >= 0
+                            ? `Analizar ${tipo} ${desdeR} a ${hastaR} de ${total}${resta < hastaR - desdeR + 1 ? ` (faltan ${resta})` : ""} (radio ${radio} m)`
+                            : `${hechos ? "Seguir con" : "Analizar"} ${resta} ${tipo} sin analizar de ${total} (radio ${radio} m)`}
                       </button>
                     )}
                   </>
