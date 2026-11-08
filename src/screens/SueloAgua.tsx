@@ -7,7 +7,7 @@ import { capturarMapa, generarInformePDF, nombreArchivo, type ItemLeyenda } from
 import { useSesion } from "../lib/sesion";
 import { useInyeccion, leerIny, COHERENCIA } from "../lib/inyeccion";
 import { obtenerBarrido, barridoFijo, conCache } from "../services/osmGeo";
-import { useSigNeuquen } from "../lib/neuquen";
+import { useSigNeuquen, distM } from "../lib/neuquen";
 
 type Nivel = "normal" | "observar" | "alerta" | "sin_datos";
 
@@ -28,6 +28,7 @@ interface Resultado {
   periodos: { reciente: { desde: string; hasta: string; escenas_validas: number }; base: { desde: string; hasta: string; escenas_validas: number } };
   indicadores: Indicador[];
   nivel_general: Nivel;
+  lluvia?: { reciente_mm: number; base_mm: number; fuente: string } | null;
   series: { reciente: any[]; base: any[] };
   metodo: string;
 }
@@ -212,9 +213,9 @@ export default function SueloAgua() {
   }, [punto, radio, res, listo, catastro, lote]);
 
   // Mapa del índice: año anterior, ahora y diferencia píxel por píxel
-  const [mapaIdx, setMapaIdx] = useState<{ indice: string; vista: "antes" | "ahora" | "cambio"; data?: MapaIndice; cargando?: boolean; error?: string } | null>(null);
+  const [mapaIdx, setMapaIdx] = useState<{ indice: string; vista: Vista; data?: MapaIndice; cargando?: boolean; error?: string } | null>(null);
   const [parpadeo, setParpadeo] = useState(false);
-  const ponerCapaIdx = (data: MapaIndice | undefined, vista: "antes" | "ahora" | "cambio" | null) => {
+  const ponerCapaIdx = (data: MapaIndice | undefined, vista: Vista | null) => {
     const map = mapRef.current;
     if (!map) return;
     if (!data || !vista) {
@@ -222,12 +223,14 @@ export default function SueloAgua() {
       if (map.getSource("idx-img")) map.removeSource("idx-img");
       return;
     }
-    const [w, so, e, n] = data.bbox;
+    const url = data.imagenes[vista];
+    if (!url) return;
+    const [w, so, e, n] = vista === "relieve" && data.bboxRelieve ? data.bboxRelieve : data.bbox;
     const coords: [[number, number], [number, number], [number, number], [number, number]] = [[w, n], [e, n], [e, so], [w, so]];
     const src = map.getSource("idx-img") as maplibregl.ImageSource | undefined;
-    if (src) src.updateImage({ url: data.imagenes[vista], coordinates: coords });
+    if (src) src.updateImage({ url, coordinates: coords });
     else {
-      map.addSource("idx-img", { type: "image", url: data.imagenes[vista], coordinates: coords });
+      map.addSource("idx-img", { type: "image", url, coordinates: coords });
       map.addLayer({ id: "idx-img", type: "raster", source: "idx-img", paint: { "raster-opacity": 1, "raster-resampling": "nearest", "raster-fade-duration": 0 } });
     }
   };
@@ -246,9 +249,19 @@ export default function SueloAgua() {
       setMapaIdx({ indice, vista: "cambio", error: e.message });
     }
   };
-  const cambiarVista = (vista: "antes" | "ahora" | "cambio") => {
+  const cambiarVista = (vista: Vista) => {
     setMapaIdx((m) => (m ? { ...m, vista } : m));
     ponerCapaIdx(mapaIdx?.data, vista);
+  };
+  // Instalación o sumidero más cercano a una mancha (registro provincial)
+  const cercanoA = (lat: number, lon: number) => {
+    let mejor: { t: string; d: number } | null = null;
+    for (const x of [...sig.instalaciones.map((i) => ({ ...i, t: `${i.nombre ?? i.sigla ?? "Instalación"}${i.tipo ? ` (${i.tipo})` : ""}` })), ...sig.sumideros.map((i) => ({ ...i, t: `Sumidero ${i.nombre ?? ""}` }))]) {
+      if (x.lat == null || x.lon == null) continue;
+      const d = distM(lat, lon, x.lat, x.lon);
+      if (!mejor || d < mejor.d) mejor = { t: x.t, d };
+    }
+    return mejor && mejor.d <= 2000 ? `${mejor.t} a ${Math.round(mejor.d)} m` : "Sin instalaciones registradas a menos de 2 km";
   };
   const cerrarMapaIdx = () => { setParpadeo(false); setMapaIdx(null); ponerCapaIdx(undefined, null); };
   // "Alternar": pasa de año anterior a ahora cada segundo para que el cambio salte a la vista
@@ -293,7 +306,13 @@ export default function SueloAgua() {
       mapa,
       leyenda: [{ color: COLOR_NIVEL[res.nivel_general], texto: "Área analizada (color según resultado)" }, { color: "#C9A46A", texto: "Instalación del catastro", forma: "circulo" }],
       secciones: [
-        { titulo: "Períodos comparados", texto: [`Reciente: ${res.periodos.reciente.desde} a ${res.periodos.reciente.hasta} (${res.periodos.reciente.escenas_validas} compuestos sin nubes). Base: ${res.periodos.base.desde} a ${res.periodos.base.hasta} (${res.periodos.base.escenas_validas}).`] },
+        { titulo: "Períodos comparados", texto: [`Reciente: ${res.periodos.reciente.desde} a ${res.periodos.reciente.hasta} (${res.periodos.reciente.escenas_validas} compuestos sin nubes). Base: ${res.periodos.base.desde} a ${res.periodos.base.hasta} (${res.periodos.base.escenas_validas}).`,
+          res.lluvia ? `Lluvia acumulada (Open-Meteo): ${res.lluvia.reciente_mm} mm en los últimos 60 días contra ${res.lluvia.base_mm} mm en el mismo período del año anterior.` : "No se pudo consultar la lluvia del período."] },
+        ...(mapaIdx?.data?.terreno ? [{ titulo: `Relieve: ${mapaIdx.data.nombre}`, texto: [
+          mapaIdx.data.terreno.lectura,
+          `Aumento por posición en el relieve: bajos y cauces ${mapaIdx.data.terreno.pct_aumento.bajos} %, laderas ${mapaIdx.data.terreno.pct_aumento.laderas} %, lomas ${mapaIdx.data.terreno.pct_aumento.lomas} %.`,
+          ...mapaIdx.data.terreno.manchas_loma.map((m, k) => `Mancha en loma ${k + 1}: ${m.area_m2.toLocaleString("es-AR")} m², ${m.hand_m} m sobre el cauce, ${m.lat}, ${m.lon}; ${cercanoA(m.lat, m.lon)}.`),
+          mapaIdx.data.terreno.metodo] }] : []),
         {
           titulo: "Indicadores",
           tabla: {
@@ -391,7 +410,8 @@ export default function SueloAgua() {
           <p className="flex items-center gap-2 text-sm"><Crosshair className="w-4 h-4 text-hielo" /> Tocá el mapa para elegir el punto a analizar</p>
           {punto && <p className="num text-xs text-tenue mt-1">{punto.nombre ? `${punto.nombre}, ` : ""}{punto.lat.toFixed(4)}°, {punto.lon.toFixed(4)}°</p>}
         </div>
-        {mapaIdx && <PanelIndice m={mapaIdx} parpadeo={parpadeo} setParpadeo={setParpadeo} onVista={cambiarVista} onCerrar={cerrarMapaIdx} />}
+        {mapaIdx && <PanelIndice m={mapaIdx} parpadeo={parpadeo} setParpadeo={setParpadeo} onVista={cambiarVista} onCerrar={cerrarMapaIdx}
+          cercano={cercanoA} onIr={(lat, lon) => mapRef.current?.flyTo({ center: [lon, lat], zoom: 15.5, duration: 1000 })} />}
       </section>
 
       <aside className="lg:w-[460px] border-l border-linea bg-panel/60">
@@ -563,6 +583,11 @@ function Informe({ res, serie, setSerie, indiceMapa, onVerMapa }: { res: Resulta
       <p className="num text-[11px] text-tenue">
         Reciente {res.periodos.reciente.desde} a {res.periodos.reciente.hasta} ({res.periodos.reciente.escenas_validas} compuestos sin nubes). Base {res.periodos.base.desde} a {res.periodos.base.hasta} ({res.periodos.base.escenas_validas}).
       </p>
+      {res.lluvia !== undefined && (
+        <p className="text-xs">{res.lluvia
+          ? <>Lluvia en los 60 días: <span className="num">{res.lluvia.reciente_mm} mm</span>, mismo período del año anterior: <span className="num">{res.lluvia.base_mm} mm</span> <span className="text-tenue">({res.lluvia.fuente})</span></>
+          : <span className="text-tenue">No se pudo consultar la lluvia del período.</span>}</p>
+      )}
 
       <div className="space-y-2.5">
         {res.indicadores.map((i) => (
@@ -898,23 +923,32 @@ function BarridoRio({ map }: { map: MLMap }) {
   );
 }
 
+type Vista = "antes" | "ahora" | "cambio" | "relieve";
 const CON_MAPA = ["agua", "humedad", "desnudo", "vegetacion", "quemado"];
 
 type MapaIndice = {
   indice: string; nombre: string; bbox: number[];
   periodos: { antes: string; ahora: string };
-  imagenes: { antes: string; ahora: string; cambio: string };
+  imagenes: { antes: string; ahora: string; cambio: string; relieve?: string };
+  bboxRelieve: number[] | null;
+  lluvia: { reciente_mm: number; base_mm: number } | null;
+  terreno: {
+    aplica: boolean; nivel: Nivel; lectura: string; metodo: string;
+    pct_aumento: { bajos: number; laderas: number; lomas: number }; pct_area: number[];
+    manchas_loma: { area_m2: number; lat: number; lon: number; hand_m: number }[];
+  } | null;
   escala: { min: number; max: number; colores: [string, string, string]; rangoCambio: number; umbral: number; sube: string; baja: string };
   resumen: { media_antes: number; media_ahora: number; pct_sube: number; pct_baja: number; resolucion_m: number } | null;
 };
 
-function PanelIndice({ m, parpadeo, setParpadeo, onVista, onCerrar }: {
-  m: { indice: string; vista: "antes" | "ahora" | "cambio"; data?: MapaIndice; cargando?: boolean; error?: string };
-  parpadeo: boolean; setParpadeo: (b: boolean) => void; onVista: (v: "antes" | "ahora" | "cambio") => void; onCerrar: () => void;
+function PanelIndice({ m, parpadeo, setParpadeo, onVista, onCerrar, cercano, onIr }: {
+  m: { indice: string; vista: Vista; data?: MapaIndice; cargando?: boolean; error?: string };
+  parpadeo: boolean; setParpadeo: (b: boolean) => void; onVista: (v: Vista) => void; onCerrar: () => void;
+  cercano: (lat: number, lon: number) => string; onIr: (lat: number, lon: number) => void;
 }) {
   const d = m.data, e = d?.escala;
   return (
-    <div className="absolute left-4 right-4 sm:right-auto bottom-14 sm:w-[340px] instrumento px-4 py-3 z-10 text-sm">
+    <div className="absolute left-4 right-4 sm:right-auto bottom-14 sm:w-[360px] max-h-[70%] overflow-y-auto instrumento px-4 py-3 z-10 text-sm">
       <div className="flex items-start justify-between gap-2">
         <p className="font-medium">{d?.nombre ?? "Preparando el mapa del índice…"}</p>
         <button onClick={onCerrar} aria-label="Cerrar" className="text-tenue hover:text-hielo"><X className="w-4 h-4" /></button>
@@ -924,7 +958,7 @@ function PanelIndice({ m, parpadeo, setParpadeo, onVista, onCerrar }: {
       {d && e && (
         <>
           <div className="flex text-xs border border-linea mt-2" role="group" aria-label="Qué mostrar">
-            {([["antes", "Año anterior"], ["ahora", "Ahora"], ["cambio", "Cambio"]] as const).map(([v, t]) => (
+            {([["antes", "Año anterior"], ["ahora", "Ahora"], ["cambio", "Cambio"], ["relieve", "Relieve"]] as const).filter(([v]) => v !== "relieve" || d.imagenes.relieve).map(([v, t]) => (
               <button key={v} onClick={() => { setParpadeo(false); onVista(v); }} aria-pressed={m.vista === v}
                 className={`flex-1 px-2 py-1.5 ${m.vista === v ? "bg-hielo text-noche" : "text-hielo hover:bg-noche/50"}`}>{t}</button>
             ))}
@@ -933,9 +967,14 @@ function PanelIndice({ m, parpadeo, setParpadeo, onVista, onCerrar }: {
             {parpadeo ? "Detener alternado" : "Alternar año anterior y ahora"}
           </button>
           <p className="num text-[11px] text-tenue mt-2">
-            {m.vista === "antes" ? `Año anterior: ${d.periodos.antes}` : m.vista === "ahora" ? `Ahora: ${d.periodos.ahora}` : `Ahora (${d.periodos.ahora}) menos año anterior (${d.periodos.antes})`}
+            {m.vista === "antes" ? `Año anterior: ${d.periodos.antes}` : m.vista === "ahora" ? `Ahora: ${d.periodos.ahora}` : m.vista === "relieve" ? "Relieve sombreado (Copernicus DEM, 30 m) y cauces calculados" : `Ahora (${d.periodos.ahora}) menos año anterior (${d.periodos.antes})`}
           </p>
-          {m.vista === "cambio" ? (
+          {m.vista === "relieve" ? (
+            <div className="mt-2 text-xs space-y-1">
+              <p className="flex items-center gap-2"><span className="w-3 h-1 shrink-0" style={{ background: "#2896F0" }} /> Cauces y cañadones: donde drenan más de 0,2 km²</p>
+              <p className="text-tenue">Sombreado desde el noroeste, relieve exagerado tres veces. Alterná con «Cambio» para ver si la humedad cae en los cauces o en las lomas.</p>
+            </div>
+          ) : m.vista === "cambio" ? (
             <div className="mt-2 text-xs space-y-1">
               <p className="flex items-center gap-2"><span className="w-3 h-3 shrink-0" style={{ background: e.colores[2] }} /> {e.sube} (más de {e.umbral})</p>
               <p className="flex items-center gap-2"><span className="w-3 h-3 shrink-0" style={{ background: e.colores[0] }} /> {e.baja} (más de {e.umbral})</p>
@@ -953,6 +992,36 @@ function PanelIndice({ m, parpadeo, setParpadeo, onVista, onCerrar }: {
               Promedio {d.resumen.media_antes.toFixed(3)} → {d.resumen.media_ahora.toFixed(3)}. {e.sube}: <span className="num">{d.resumen.pct_sube}</span> % del área; {e.baja.toLowerCase()}: <span className="num">{d.resumen.pct_baja}</span> %.
               <span className="block text-[10px] text-tenue mt-0.5">Mediana de las pasadas sin nubes de cada período, píxeles de {d.resumen.resolucion_m} m.</span>
             </p>
+          )}
+          {d.terreno && d.terreno.aplica && (
+            <div className="mt-3 pt-3 border-t border-linea text-xs space-y-2">
+              <div className="flex items-baseline justify-between gap-2">
+                <p className="font-medium text-sm">Relieve y lluvia</p>
+                <span className="px-1.5 py-0.5 font-semibold" style={{ background: COLOR_NIVEL[d.terreno.nivel], color: "#12100E" }}>{TEXTO_NIVEL[d.terreno.nivel]}</span>
+              </div>
+              <p className="leading-snug">{d.terreno.lectura}</p>
+              <div>
+                <div className="flex h-2.5" aria-label="Dónde está el aumento">
+                  <span style={{ width: `${d.terreno.pct_aumento.bajos}%`, background: "#2896F0" }} />
+                  <span style={{ width: `${d.terreno.pct_aumento.laderas}%`, background: "#C9A46A" }} />
+                  <span style={{ width: `${d.terreno.pct_aumento.lomas}%`, background: "#E8553A" }} />
+                </div>
+                <p className="num text-[10px] text-tenue mt-0.5">Bajos y cauces {d.terreno.pct_aumento.bajos} % · laderas {d.terreno.pct_aumento.laderas} % · lomas {d.terreno.pct_aumento.lomas} % <span className="block">(el área es {d.terreno.pct_area[0]} % bajos, {d.terreno.pct_area[1]} % laderas, {d.terreno.pct_area[2]} % lomas)</span></p>
+              </div>
+              {d.terreno.manchas_loma.length > 0 && (
+                <ul className="space-y-1">
+                  {d.terreno.manchas_loma.map((x, k) => (
+                    <li key={k}>
+                      <button onClick={() => onIr(x.lat, x.lon)} className="w-full text-left hover:text-hielo">
+                        <span className="text-llama">Mancha en loma {k + 1}</span>: <span className="num">{x.area_m2.toLocaleString("es-AR")} m²</span>, {x.hand_m} m sobre el cauce
+                        <span className="block text-[10px] text-tenue">{cercano(x.lat, x.lon)}</span>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <p className="text-[10px] text-tenue leading-snug">{d.terreno.metodo}</p>
+            </div>
           )}
         </>
       )}

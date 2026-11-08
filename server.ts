@@ -604,7 +604,156 @@ const mediana = (xs: number[]) => {
 
 type Nivel = "normal" | "observar" | "alerta" | "sin_datos";
 
-const evaluarSueloAgua = (base: any[], reciente: any[]) => {
+
+// ---------------------------------------------------------------------------
+// Lluvia del período (Open-Meteo): últimos 60 días con el pronóstico/análisis
+// (past_days) y el mismo período del año anterior con el archivo histórico (ERA5).
+// ---------------------------------------------------------------------------
+type Lluvia = { reciente_mm: number; base_mm: number; fuente: string };
+const cacheLluvia = new Map<string, { t: number; v: Lluvia | null }>();
+const llovioMas = (l: Lluvia) => l.reciente_mm >= l.base_mm + 15 && l.reciente_mm >= l.base_mm * 1.5;
+const sumaLluvia = async (url: string) => {
+  const r = await fetch(url, { headers: { "User-Agent": "monitor-ambiental" } });
+  if (!r.ok) throw new Error(`Open-Meteo HTTP ${r.status}`);
+  const d = await r.json();
+  const v: (number | null)[] = d?.daily?.precipitation_sum || [];
+  if (!v.length) throw new Error("Open-Meteo sin datos");
+  return v.reduce<number>((s, x) => s + (x ?? 0), 0);
+};
+const lluviaPeriodos = async (lat: number, lon: number, desde: Date, hasta: Date, desdeBase: Date, hastaBase: Date): Promise<Lluvia | null> => {
+  const clave = `${lat.toFixed(2)}|${lon.toFixed(2)}|${hasta.toISOString().slice(0, 10)}`;
+  const c = cacheLluvia.get(clave);
+  if (c && Date.now() - c.t < 6 * 3600000) return c.v;
+  const f = (d: Date) => d.toISOString().slice(0, 10);
+  const dias = Math.round((hasta.getTime() - desde.getTime()) / 86400000);
+  const q = `latitude=${lat.toFixed(3)}&longitude=${lon.toFixed(3)}&daily=precipitation_sum&timezone=America%2FArgentina%2FBuenos_Aires`;
+  let v: Lluvia | null = null;
+  try {
+    const [rec, bas] = await Promise.all([
+      sumaLluvia(`https://api.open-meteo.com/v1/forecast?${q}&past_days=${dias}&forecast_days=1`),
+      sumaLluvia(`https://archive-api.open-meteo.com/v1/archive?${q}&start_date=${f(desdeBase)}&end_date=${f(hastaBase)}`)
+    ]);
+    v = { reciente_mm: Math.round(rec), base_mm: Math.round(bas), fuente: "Open-Meteo" };
+  } catch { v = null; }
+  cacheLluvia.set(clave, { t: Date.now(), v });
+  if (cacheLluvia.size > 500) cacheLluvia.delete(cacheLluvia.keys().next().value!);
+  return v;
+};
+
+// ---------------------------------------------------------------------------
+// Relieve y drenaje: Copernicus DEM GLO-30 desde Sentinel Hub. Se rellenan las
+// depresiones (priority-flood, Barnes 2014), se calcula la dirección de flujo D8
+// y la acumulación; los cauces son celdas que drenan más de 0,2 km². Para cada
+// celda se mide la altura sobre el cauce al que drena (HAND, Rennó y otros 2008).
+// ---------------------------------------------------------------------------
+type Relieve = { bbox: number[]; W: number; H: number; z: Float32Array; hand: Float32Array; cauce: Uint8Array; celdaM: number };
+const cacheRelieve = new Map<string, Relieve>();
+const AREA_CAUCE_M2 = 200000;
+
+const obtenerRelieve = async (lat: number, lon: number, radio: number): Promise<Relieve> => {
+  // El drenaje necesita contexto: se toma bastante más que el círculo
+  const R = radio + Math.max(1500, radio);
+  const clave = `${lat.toFixed(3)}|${lon.toFixed(3)}|${R}`;
+  const hit = cacheRelieve.get(clave);
+  if (hit) return hit;
+  const bbox = bboxCirculo(lat, lon, R);
+  const lado = Math.round(Math.min(400, Math.max(64, (2 * R) / 30)));
+  const token = await obtenerTokenCdse();
+  const cuerpo = {
+    input: { bounds: { bbox, properties: { crs: "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } }, data: [{ type: "dem", dataFilter: { demInstance: "COPERNICUS_30" }, processing: { upsampling: "BILINEAR" } }] },
+    output: { width: lado, height: lado, responses: [{ identifier: "default", format: { type: "image/png" } }] },
+    evalscript: `//VERSION=3
+function setup(){return{input:["DEM"],output:{bands:1,sampleType:"UINT16"}}}
+function evaluatePixel(s){return[Math.max(0,Math.min(65535,Math.round(s.DEM*10)))]}`
+  };
+  const r = await fetchSH("https://sh.dataspace.copernicus.eu/api/v1/process", {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" }, body: JSON.stringify(cuerpo)
+  });
+  if (!r.ok) throw new Error(`Modelo de elevación (HTTP ${r.status})`);
+  const img: any = decodificarPng(new Uint8Array(await r.arrayBuffer()));
+  const W = img.width, H = img.height, ch = img.channels, N = W * H;
+  const escala = (img.depth || 8) === 16 ? 10 : 10 / 257; // si llegara en 8 bits, aproximar
+  const z = new Float32Array(N);
+  for (let i = 0; i < N; i++) z[i] = img.data[i * ch] / escala;
+  const celdaM = (2 * R) / W;
+  const rel: Relieve = { bbox, W, H, z, celdaM, ...calcDrenaje(z, W, H, celdaM) };
+  cacheRelieve.set(clave, rel);
+  if (cacheRelieve.size > 40) cacheRelieve.delete(cacheRelieve.keys().next().value!);
+  return rel;
+};
+
+const calcDrenaje = (z: Float32Array, W: number, H: number, celdaM: number) => {
+  const N = W * H;
+  // Priority-flood con épsilon: deja todo el terreno drenando hacia el borde
+  const lleno = new Float32Array(N), cerrado = new Uint8Array(N), orden = new Int32Array(N);
+  const heapI = new Int32Array(N), heapV = new Float32Array(N); let hn = 0;
+  const push = (i: number, v: number) => { let k = hn++; while (k > 0) { const p = (k - 1) >> 1; if (heapV[p] <= v) break; heapI[k] = heapI[p]; heapV[k] = heapV[p]; k = p; } heapI[k] = i; heapV[k] = v; };
+  const pop = () => { const top = heapI[0]; const li = heapI[--hn], lv = heapV[hn]; let k = 0; for (;;) { let c = 2 * k + 1; if (c >= hn) break; if (c + 1 < hn && heapV[c + 1] < heapV[c]) c++; if (heapV[c] >= lv) break; heapI[k] = heapI[c]; heapV[k] = heapV[c]; k = c; } heapI[k] = li; heapV[k] = lv; return top; };
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) if (x === 0 || y === 0 || x === W - 1 || y === H - 1) { const i = y * W + x; cerrado[i] = 1; lleno[i] = z[i]; push(i, z[i]); }
+  let no = 0;
+  const DX = [-1, 0, 1, -1, 1, -1, 0, 1], DY = [-1, -1, -1, 0, 0, 1, 1, 1];
+  while (hn) {
+    const c = pop(); orden[no++] = c;
+    const cx = c % W, cy = (c - cx) / W;
+    for (let k = 0; k < 8; k++) {
+      const nx = cx + DX[k], ny = cy + DY[k];
+      if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+      const j = ny * W + nx; if (cerrado[j]) continue;
+      cerrado[j] = 1; lleno[j] = Math.max(z[j], lleno[c] + 1e-3); push(j, lleno[j]);
+    }
+  }
+  // D8 sobre la superficie rellenada
+  const abajo = new Int32Array(N).fill(-1);
+  for (let i = 0; i < N; i++) {
+    const x = i % W, y = (i - x) / W;
+    if (x === 0 || y === 0 || x === W - 1 || y === H - 1) continue;
+    let mejor = 0, mj = -1;
+    for (let k = 0; k < 8; k++) {
+      const j = (y + DY[k]) * W + x + DX[k];
+      const pend = (lleno[i] - lleno[j]) / (DX[k] && DY[k] ? Math.SQRT2 : 1);
+      if (pend > mejor) { mejor = pend; mj = j; }
+    }
+    abajo[i] = mj;
+  }
+  // Acumulación: de arriba hacia abajo (orden inverso al de salida del heap)
+  const acc = new Float32Array(N).fill(1);
+  for (let n = N - 1; n >= 0; n--) { const i = orden[n]; if (abajo[i] >= 0) acc[abajo[i]] += acc[i]; }
+  const minCeldas = AREA_CAUCE_M2 / (celdaM * celdaM);
+  const cauce = new Uint8Array(N);
+  for (let i = 0; i < N; i++) if (acc[i] >= minCeldas) cauce[i] = 1;
+  // HAND: aguas abajo primero, cada celda hereda el cauce al que drena
+  const destino = new Int32Array(N).fill(-1), hand = new Float32Array(N).fill(NaN);
+  for (let n = 0; n < N; n++) {
+    const i = orden[n];
+    destino[i] = cauce[i] ? i : abajo[i] >= 0 ? destino[abajo[i]] : -1;
+    if (destino[i] >= 0) hand[i] = Math.max(0, z[i] - z[destino[i]]);
+  }
+  return { hand, cauce };
+};
+const celdaRelieve = (rel: Relieve, lat: number, lon: number) => {
+  const [w, s, e, n] = rel.bbox;
+  const x = Math.floor(((lon - w) / (e - w)) * rel.W), y = Math.floor(((n - lat) / (n - s)) * rel.H);
+  return x < 0 || y < 0 || x >= rel.W || y >= rel.H ? -1 : y * rel.W + x;
+};
+/** Relieve sombreado con los cauces, para ver la humedad sobre el terreno */
+const imagenRelieve = (rel: Relieve) => {
+  const { W, H, z, cauce, celdaM } = rel;
+  const out = new Uint8Array(W * H * 4);
+  const az = (315 * Math.PI) / 180, alt = (45 * Math.PI) / 180;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x, o = i * 4;
+    const g = (xx: number, yy: number) => z[Math.min(H - 1, Math.max(0, yy)) * W + Math.min(W - 1, Math.max(0, xx))];
+    // Exageración vertical x3: la meseta neuquina es muy plana
+    const dzdx = ((g(x + 1, y) - g(x - 1, y)) / (2 * celdaM)) * 3, dzdy = ((g(x, y + 1) - g(x, y - 1)) / (2 * celdaM)) * 3;
+    const pend = Math.atan(Math.hypot(dzdx, dzdy)), asp = Math.atan2(dzdy, -dzdx);
+    const l = Math.max(0, Math.cos(Math.PI / 2 - alt) * Math.cos(pend) + Math.sin(Math.PI / 2 - alt) * Math.sin(pend) * Math.cos(az - asp));
+    if (cauce[i]) out.set([40, 150, 240, 255], o);
+    else { const v = Math.round(60 + 180 * l); out.set([v, v - 6, v - 14, 150], o); }
+  }
+  return `data:image/png;base64,${Buffer.from(codificarPng({ width: W, height: H, data: out, channels: 4 })).toString("base64")}`;
+};
+
+const evaluarSueloAgua = (base: any[], reciente: any[], lluvia: Lluvia | null = null) => {
   const med = (filas: any[], k: string) => mediana(filas.map((f) => f[k]).filter((x) => x !== null));
   const ind = (id: string, nombre: string, k: string, regla: (b: number, r: number) => { nivel: Nivel; lectura: string }, escala = 1, unidad = "") => {
     const b = med(base, k);
@@ -673,6 +822,19 @@ const evaluarSueloAgua = (base: any[], reciente: any[]) => {
       Object.assign(i, { nivel: "observar" as Nivel, lectura: `${i.lectura} Ojo: hay agua en el área (${(fracAgua * 100).toFixed(0)} %) y su nivel puede haber cambiado entre años, lo que también mueve este índice.` });
     }
   }
+  // Humedad: la lectura depende de si llovió más que el año anterior en el mismo período
+  const hum = indicadores.find((x) => x.id === "humedad");
+  if (hum && (hum.nivel === "alerta" || hum.nivel === "observar")) {
+    const verMapa = " Con «Ver en el mapa» se ve si la humedad sigue los bajos y cauces (lluvia) o aparece en una loma o junto a una instalación (anómala).";
+    if (!lluvia) {
+      hum.lectura = `Suelo ${hum.nivel === "alerta" ? "marcadamente" : "algo"} más húmedo que el año anterior en la misma época. Puede ser lluvia o un vuelco o pérdida: no se pudo consultar la lluvia del período.${verMapa}`;
+    } else if (llovioMas(lluvia)) {
+      hum.nivel = "observar";
+      hum.lectura = `Suelo más húmedo que el año anterior, pero en estos 60 días llovieron ${lluvia.reciente_mm} mm contra ${lluvia.base_mm} mm el año pasado: compatible con lluvia.${verMapa}`;
+    } else {
+      hum.lectura = `Suelo ${hum.nivel === "alerta" ? "marcadamente" : "algo"} más húmedo que el año anterior y no llovió más que entonces (${lluvia.reciente_mm} mm contra ${lluvia.base_mm} mm): compatible con vuelco de líquidos o pérdidas, verificar.${verMapa}`;
+    }
+  }
   const orden: Record<Nivel, number> = { sin_datos: 0, normal: 1, observar: 2, alerta: 3 };
   const general = indicadores.reduce<Nivel>((acc, i) => (orden[i.nivel] > orden[acc] ? i.nivel : acc), "sin_datos");
   return { indicadores, nivel_general: general };
@@ -686,11 +848,12 @@ const analizarPunto = async (lat: number, lon: number, radioM: number) => {
   const desde = new Date(hasta.getTime() - 60 * 86400000);
   const hastaBase = new Date(hasta.getTime() - 365 * 86400000);
   const desdeBase = new Date(desde.getTime() - 365 * 86400000);
-  const [reciente, base] = await Promise.all([
+  const [reciente, base, lluvia] = await Promise.all([
     serieEstadistica(token, geom, desde, hasta, lado),
-    serieEstadistica(token, geom, desdeBase, hastaBase, lado)
+    serieEstadistica(token, geom, desdeBase, hastaBase, lado),
+    lluviaPeriodos(lat, lon, desde, hasta, desdeBase, hastaBase)
   ]);
-  const ev = evaluarSueloAgua(base, reciente);
+  const ev = evaluarSueloAgua(base, reciente, lluvia);
   return {
     punto: { lat, lon },
     radio_m: radioM,
@@ -699,8 +862,9 @@ const analizarPunto = async (lat: number, lon: number, radioM: number) => {
       base: { desde: desdeBase.toISOString().slice(0, 10), hasta: hastaBase.toISOString().slice(0, 10), escenas_validas: base.length }
     },
     ...ev,
+    lluvia,
     series: { reciente, base },
-    metodo: "Sentinel-2 L2A a 20 m, nubes y sombras excluidas con la clasificación SCL. Medianas de compuestos de 5 días. Comparación contra el mismo período del año anterior. Agua con MNDWI (Xu 2006), suelo quemado con NBR (Key y Benson 2006), algas flotantes con FAI (Hu 2009), humedad con NDMI, vegetación con NDVI y suelo desnudo con BSI. Umbrales heurísticos: requieren verificación en campo o con imagen."
+    metodo: "Sentinel-2 L2A a 20 m, nubes y sombras excluidas con la clasificación SCL. Medianas de compuestos de 5 días. Comparación contra el mismo período del año anterior. Agua con MNDWI (Xu 2006), suelo quemado con NBR (Key y Benson 2006), algas flotantes con FAI (Hu 2009), humedad con NDMI, vegetación con NDVI y suelo desnudo con BSI. Lluvia acumulada de Open-Meteo (modelos meteorológicos y reanálisis ERA5). Umbrales heurísticos: requieren verificación en campo o con imagen."
   };
 };
 
@@ -737,6 +901,59 @@ const INDICES_MAPA: Record<string, { formula: string; min: number; max: number; 
   quemado: { nombre: "Suelo quemado (NBR)", formula: "(s.B08-s.B12)/(s.B08+s.B12+1e-6)", min: -0.3, max: 0.4, rangoCambio: 0.15, colores: ["#2A2420", "#B8A88A", "#2F7A2F"], sube: "Más vegetación (NBR sube)", baja: "Posible quemado o ennegrecido (NBR baja)" }
 };
 const cacheMapaIdx = new Map<string, { t: number; data: any }>();
+/** Dónde cayó el aumento del índice respecto del relieve: bajos y cauces (HAND < 2 m),
+ *  laderas (2 a 5 m) o lomas (> 5 m). Las manchas en loma se listan aparte. */
+const analizarTerreno = (W: number, H: number, pxM: number, bbox: number[], sube: Uint8Array, hand: Float32Array, dentro: (x: number, y: number) => boolean,
+  indice: string, def: { sube: string }, lluvia: Lluvia | null, pctSube: number) => {
+  const clase = (h: number) => (h < 2 ? 0 : h <= 5 ? 1 : 2);
+  const area = [0, 0, 0], hum = [0, 0, 0];
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+    const i = y * W + x; if (!dentro(x, y) || !Number.isFinite(hand[i])) continue;
+    const c = clase(hand[i]); area[c]++; if (sube[i]) hum[c]++;
+  }
+  const tA = area[0] + area[1] + area[2], tH = hum[0] + hum[1] + hum[2];
+  const pct = (a: number[], t: number) => a.map((v) => (t ? Number(((v / t) * 100).toFixed(0)) : 0));
+  // Manchas continuas de aumento (8 vecinos) con su altura media sobre el cauce
+  const visto = new Uint8Array(W * H);
+  const manchas: { area_m2: number; lat: number; lon: number; hand_m: number }[] = [];
+  for (let i = 0; i < W * H; i++) {
+    if (!sube[i] || visto[i]) continue;
+    const pila = [i]; visto[i] = 1; let nPx = 0, sx = 0, sy = 0, sh = 0, nh = 0;
+    while (pila.length) {
+      const k = pila.pop()!; const x = k % W, y = (k - x) / W;
+      nPx++; sx += x; sy += y; if (Number.isFinite(hand[k])) { sh += hand[k]; nh++; }
+      for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) {
+        const nx = x + dx, ny = y + dy; if (nx < 0 || ny < 0 || nx >= W || ny >= H) continue;
+        const j = ny * W + nx; if (sube[j] && !visto[j]) { visto[j] = 1; pila.push(j); }
+      }
+    }
+    const a = nPx * pxM * pxM;
+    if (a < 1500 || !nh) continue;
+    manchas.push({ area_m2: Math.round(a), hand_m: Number((sh / nh).toFixed(1)),
+      lon: Number((bbox[0] + ((sx / nPx + 0.5) / W) * (bbox[2] - bbox[0])).toFixed(5)),
+      lat: Number((bbox[3] - ((sy / nPx + 0.5) / H) * (bbox[3] - bbox[1])).toFixed(5)) });
+  }
+  const enLoma = manchas.filter((m) => m.hand_m > 5).sort((a, b) => b.area_m2 - a.area_m2);
+  const [pB, pL, pA] = pct(hum, tH), [aB] = pct(area, tA);
+  const llovio = lluvia ? llovioMas(lluvia) : null;
+  const sigueBajos = tH > 0 && (pB >= 60 || pB >= aB * 1.5);
+  const generalizado = pctSube >= 25;
+  let nivel: "normal" | "observar" | "alerta" = "normal", lectura = "";
+  const txtLluvia = lluvia ? `En estos 60 días llovieron ${lluvia.reciente_mm} mm contra ${lluvia.base_mm} mm el año anterior.` : "No se pudo consultar la lluvia del período.";
+  if (!tH) lectura = `No hay aumentos relevantes para ubicar en el relieve. ${txtLluvia}`;
+  else if (enLoma.length && !llovio) { nivel = "alerta"; lectura = `Hay ${enLoma.length} mancha${enLoma.length > 1 ? "s" : ""} de aumento en zona alta (más de 5 m sobre el cauce al que drena), donde el agua de lluvia no se junta, y no llovió más que el año anterior. ${txtLluvia} Anómalo: revisar las manchas listadas.`; }
+  else if (sigueBajos && (generalizado || llovio)) { nivel = "normal"; lectura = `El ${pB} % del aumento está en bajos y cauces (que ocupan el ${aB} % del área): sigue el drenaje, patrón de escorrentía. ${txtLluvia}${enLoma.length ? ` Igual hay ${enLoma.length} mancha${enLoma.length > 1 ? "s" : ""} en loma para mirar.` : ""}` ; if (enLoma.length) nivel = "observar"; }
+  else if (sigueBajos && llovio === false) { nivel = "observar"; lectura = `El aumento está sobre todo en bajos y cauces (${pB} %), pero no llovió más que el año anterior. ${txtLluvia} Puede ser una pérdida que escurrió hasta el bajo o napa alta: verificar aguas arriba.`; }
+  else if (enLoma.length) { nivel = "observar"; lectura = `Llovió más que el año anterior, pero hay ${enLoma.length} mancha${enLoma.length > 1 ? "s" : ""} en zona alta, donde la lluvia no debería acumularse. ${txtLluvia}`; }
+  else { nivel = llovio ? "normal" : "observar"; lectura = `El aumento está repartido: ${pB} % en bajos, ${pL} % en laderas y ${pA} % en lomas. ${txtLluvia}`; }
+  return {
+    aplica: indice === "humedad" || indice === "agua",
+    pct_aumento: { bajos: pB, laderas: pL, lomas: pA }, pct_area: pct(area, tA),
+    manchas_loma: enLoma.slice(0, 6), nivel, lectura,
+    metodo: "Copernicus DEM GLO-30. Depresiones rellenadas (priority-flood), flujo D8, cauces donde drenan más de 0,2 km². Altura sobre el cauce (HAND): bajo < 2 m, ladera 2 a 5 m, loma > 5 m. Precisión vertical del modelo: unos 2 a 4 m."
+  };
+};
+
 const hexRgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
 const mezclar = (c: [string, string, string], t: number) => {
   t = Math.max(0, Math.min(1, t));
@@ -753,7 +970,7 @@ app.get("/api/analisis/mapa", requiere("suelo.cambios", "suelo.lote"), async (re
     const def = INDICES_MAPA[indice];
     if (!def) return res.status(400).json({ error: `Índice desconocido: ${indice}` });
     if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ error: "Faltan lat y lon" });
-    const clave = `${indice}|${lat.toFixed(4)}|${lon.toFixed(4)}|${radio}`;
+    const clave = `v2|${indice}|${lat.toFixed(4)}|${lon.toFixed(4)}|${radio}`;
     const c = cacheMapaIdx.get(clave);
     if (c && Date.now() - c.t < 6 * 3600000) { res.set("Cache-Control", "private, max-age=3600"); return res.json(c.data); }
 
@@ -777,9 +994,13 @@ function evaluatePixel(samples){return[enc(serie(samples.antes||[])),enc(serie(s
       output: { width: lado, height: lado, responses: [{ identifier: "default", format: { type: "image/png" } }] },
       evalscript: script
     };
-    const r = await fetchSH("https://sh.dataspace.copernicus.eu/api/v1/process", {
-      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" }, body: JSON.stringify(cuerpo)
-    });
+    const [r, rel, lluvia] = await Promise.all([
+      fetchSH("https://sh.dataspace.copernicus.eu/api/v1/process", {
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" }, body: JSON.stringify(cuerpo)
+      }),
+      obtenerRelieve(lat, lon, radio).catch(() => null),
+      lluviaPeriodos(lat, lon, desde, hasta, desdeBase, hastaBase)
+    ]);
     if (!r.ok) {
       const t = await r.text();
       let msg = t.slice(0, 300);
@@ -790,6 +1011,13 @@ function evaluatePixel(samples){return[enc(serie(samples.antes||[])),enc(serie(s
     const img = pngRGBA(new Uint8Array(await r.arrayBuffer()));
     const W = img.width, H = img.height, ch = img.channels, px = img.data as Uint8Array;
     const pxM = (2 * radio) / W;
+    // Relieve de cada píxel: altura sobre el cauce al que drena (NaN si no se sabe)
+    const handPx = new Float32Array(W * H).fill(NaN);
+    if (rel) for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const k = celdaRelieve(rel, bbox[3] - ((y + 0.5) / H) * (bbox[3] - bbox[1]), bbox[0] + ((x + 0.5) / W) * (bbox[2] - bbox[0]));
+      if (k >= 0) handPx[y * W + x] = rel.hand[k];
+    }
+    const subeMask = new Uint8Array(W * H);
     const antes = new Uint8ClampedArray(W * H * 4), ahora = new Uint8ClampedArray(W * H * 4), cambio = new Uint8ClampedArray(W * H * 4);
     let n = 0, sumA = 0, sumH = 0, sube = 0, baja = 0;
     const umbral = def.rangoCambio / 3;
@@ -807,19 +1035,22 @@ function evaluatePixel(samples){return[enc(serie(samples.antes||[])),enc(serie(s
       if (va === null || vh === null) continue;
       n++; sumA += va; sumH += vh;
       const d = vh - va;
-      if (d > umbral) sube++; else if (d < -umbral) baja++;
+      if (d > umbral) { sube++; subeMask[i] = 1; } else if (d < -umbral) baja++;
       // Diferencia: azul/verde donde sube, ocre donde baja; casi transparente si no cambió
       const t = Math.max(-1, Math.min(1, d / def.rangoCambio));
       const col = t >= 0 ? hexRgb(def.colores[2]) : hexRgb(def.colores[0]);
       cambio[o] = col[0]; cambio[o + 1] = col[1]; cambio[o + 2] = col[2];
       cambio[o + 3] = Math.abs(d) < umbral ? 25 : Math.round(90 + 160 * Math.abs(t));
     }
+    const terreno = rel ? analizarTerreno(W, H, pxM, bbox, subeMask, handPx, (x, y) => Math.hypot((x + 0.5) * pxM - radio, (y + 0.5) * pxM - radio) <= radio, indice, def, lluvia, n ? (sube / n) * 100 : 0) : null;
     const url = (d: Uint8ClampedArray) => `data:image/png;base64,${Buffer.from(codificarPng({ width: W, height: H, data: d, channels: 4 })).toString("base64")}`;
     const f = (d: Date) => d.toISOString().slice(0, 10);
     const data = {
       indice, nombre: def.nombre, bbox,
       periodos: { antes: `${f(desdeBase)} a ${f(hastaBase)}`, ahora: `${f(desde)} a ${f(hasta)}` },
-      imagenes: { antes: url(antes), ahora: url(ahora), cambio: url(cambio) },
+      imagenes: { antes: url(antes), ahora: url(ahora), cambio: url(cambio), ...(rel ? { relieve: imagenRelieve(rel) } : {}) },
+      bboxRelieve: rel?.bbox ?? null,
+      terreno, lluvia,
       escala: { min: def.min, max: def.max, colores: def.colores, rangoCambio: def.rangoCambio, umbral: Number(umbral.toFixed(3)), sube: def.sube, baja: def.baja },
       resumen: n ? {
         media_antes: Number((sumA / n).toFixed(3)), media_ahora: Number((sumH / n).toFixed(3)),
