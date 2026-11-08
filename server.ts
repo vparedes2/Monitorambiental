@@ -24,6 +24,29 @@ import {
 import fs from "fs";
 import { decode as decodificarPng, encode as codificarPng } from "fast-png";
 
+/** Sentinel Hub a veces optimiza el PNG (gris, gris+alfa, paleta o 16 bits cuando la imagen es
+ *  casi uniforme, p. ej. sin ningún candidato). Se normaliza siempre a RGBA de 8 bits. */
+const pngRGBA = (bytes: Uint8Array) => {
+  const img: any = decodificarPng(bytes);
+  const W = img.width, H = img.height, ch = img.channels, src = img.data, prof = img.depth || 8;
+  const out = new Uint8Array(W * H * 4);
+  const v = (x: number) => (prof === 16 ? x >> 8 : x);
+  for (let i = 0; i < W * H; i++) {
+    let r, g, b, a = 255;
+    if (img.palette && ch === 1) {
+      const c = img.palette[src[i]] || [0, 0, 0];
+      [r, g, b] = c; if (c.length > 3) a = c[3];
+    } else if (ch === 1 || ch === 2) {
+      r = g = b = v(src[i * ch]); if (ch === 2) a = v(src[i * ch + 1]);
+    } else {
+      r = v(src[i * ch]); g = v(src[i * ch + 1]); b = v(src[i * ch + 2]); if (ch === 4) a = v(src[i * ch + 3]);
+    }
+    out[i * 4] = r; out[i * 4 + 1] = g; out[i * 4 + 2] = b; out[i * 4 + 3] = a;
+  }
+  return { width: W, height: H, channels: 4, data: out };
+};
+
+
 dotenv.config();
 
 const limpiarEnv = (v?: string) => (v || "").replace(/^["']|["']$/g, "").trim();
@@ -764,7 +787,7 @@ function evaluatePixel(samples){return[enc(serie(samples.antes||[])),enc(serie(s
       if (r.status === 429) throw new Error("Sentinel Hub está limitando las consultas por minuto. Esperá un minuto y volvé a intentar.");
       throw new Error(`Sentinel Hub (HTTP ${r.status}): ${msg}`);
     }
-    const img = decodificarPng(new Uint8Array(await r.arrayBuffer()));
+    const img = pngRGBA(new Uint8Array(await r.arrayBuffer()));
     const W = img.width, H = img.height, ch = img.channels, px = img.data as Uint8Array;
     const pxM = (2 * radio) / W;
     const antes = new Uint8ClampedArray(W * H * 4), ahora = new Uint8ClampedArray(W * H * 4), cambio = new Uint8ClampedArray(W * H * 4);
@@ -925,7 +948,7 @@ const mascaraDerrame = async (tipo: "suelo" | "agua", lat: number, lon: number, 
     try { msg = JSON.parse(t)?.error?.message || msg; } catch { /* texto */ }
     throw new Error(`Sentinel Hub (HTTP ${r.status}): ${msg}`);
   }
-  const img = decodificarPng(new Uint8Array(await r.arrayBuffer()));
+  const img = pngRGBA(new Uint8Array(await r.arrayBuffer()));
   const W = img.width, H = img.height, ch = img.channels, px = img.data as Uint8Array;
   const pxM = (2 * radio) / W;
   // Solo cuenta lo que cae dentro del círculo
@@ -1156,7 +1179,7 @@ app.get("/api/confirmar-foco", requiere("instalaciones", "focos"), async (req, r
       };
       const r = await fetchSH("https://sh.dataspace.copernicus.eu/api/v1/process", { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" }, body: JSON.stringify(cuerpo) });
       if (!r.ok) continue;
-      const img = decodificarPng(new Uint8Array(await r.arrayBuffer()));
+      const img = pngRGBA(new Uint8Array(await r.arrayBuffer()));
       const W = img.width, H = img.height, ch = img.channels, px = img.data as Uint8Array;
       const [w0, s0, e0, n0] = bbox;
       const calientes: { lat: number; lon: number; brillo: number }[] = [];
