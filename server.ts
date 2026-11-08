@@ -701,6 +701,119 @@ app.get("/api/analisis/suelo-agua", requiere("suelo.cambios", "suelo.lote", "sue
 });
 
 // ---------------------------------------------------------------------------
+// Mapa del índice: año anterior, ahora y diferencia, píxel por píxel.
+// Mismas ventanas que el análisis (60 días y el mismo período del año anterior),
+// mediana de las pasadas sin nubes en cada período. Una sola consulta por
+// fusión de datos devuelve los dos períodos; el color se aplica acá.
+// ---------------------------------------------------------------------------
+const INDICES_MAPA: Record<string, { formula: string; min: number; max: number; rangoCambio: number; colores: [string, string, string]; sube: string; baja: string; nombre: string }> = {
+  humedad: { nombre: "Humedad del suelo (NDMI)", formula: "(s.B08-s.B11)/(s.B08+s.B11+1e-6)", min: -0.4, max: 0.4, rangoCambio: 0.15, colores: ["#8C5A2B", "#E8DCC0", "#1F6FB8"], sube: "Más húmedo", baja: "Más seco" },
+  vegetacion: { nombre: "Cubierta vegetal (NDVI)", formula: "(s.B08-s.B04)/(s.B08+s.B04+1e-6)", min: 0, max: 0.5, rangoCambio: 0.15, colores: ["#D9C9A3", "#A8B85A", "#2F7A2F"], sube: "Más vegetación", baja: "Menos vegetación" },
+  agua: { nombre: "Agua superficial (MNDWI)", formula: "(s.B03-s.B11)/(s.B03+s.B11+1e-6)", min: -0.6, max: 0.4, rangoCambio: 0.25, colores: ["#8C5A2B", "#E8DCC0", "#1F6FB8"], sube: "Más agua", baja: "Menos agua" },
+  desnudo: { nombre: "Suelo desnudo (BSI)", formula: "((s.B11+s.B04)-(s.B08+s.B02))/((s.B11+s.B04)+(s.B08+s.B02)+1e-6)", min: -0.2, max: 0.4, rangoCambio: 0.12, colores: ["#2F7A2F", "#E8DCC0", "#A0522D"], sube: "Más suelo descubierto", baja: "Menos suelo descubierto" },
+  quemado: { nombre: "Suelo quemado (NBR)", formula: "(s.B08-s.B12)/(s.B08+s.B12+1e-6)", min: -0.3, max: 0.4, rangoCambio: 0.15, colores: ["#2A2420", "#B8A88A", "#2F7A2F"], sube: "Más vegetación (NBR sube)", baja: "Posible quemado o ennegrecido (NBR baja)" }
+};
+const cacheMapaIdx = new Map<string, { t: number; data: any }>();
+const hexRgb = (h: string) => [1, 3, 5].map((i) => parseInt(h.slice(i, i + 2), 16));
+const mezclar = (c: [string, string, string], t: number) => {
+  t = Math.max(0, Math.min(1, t));
+  const [a, b] = t < 0.5 ? [hexRgb(c[0]), hexRgb(c[1])] : [hexRgb(c[1]), hexRgb(c[2])];
+  const u = t < 0.5 ? t * 2 : (t - 0.5) * 2;
+  return a.map((x, i) => Math.round(x + (b[i] - x) * u));
+};
+
+app.get("/api/analisis/mapa", requiere("suelo.cambios", "suelo.lote"), async (req, res) => {
+  try {
+    const lat = Number(req.query.lat), lon = Number(req.query.lon);
+    const radio = Math.min(3000, Math.max(100, Number(req.query.radio) || 500));
+    const indice = String(req.query.indice || "humedad");
+    const def = INDICES_MAPA[indice];
+    if (!def) return res.status(400).json({ error: `Índice desconocido: ${indice}` });
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ error: "Faltan lat y lon" });
+    const clave = `${indice}|${lat.toFixed(4)}|${lon.toFixed(4)}|${radio}`;
+    const c = cacheMapaIdx.get(clave);
+    if (c && Date.now() - c.t < 6 * 3600000) { res.set("Cache-Control", "private, max-age=3600"); return res.json(c.data); }
+
+    const hasta = new Date();
+    const desde = new Date(hasta.getTime() - 60 * 86400000);
+    const hastaBase = new Date(hasta.getTime() - 365 * 86400000);
+    const desdeBase = new Date(desde.getTime() - 365 * 86400000);
+    const bbox = bboxCirculo(lat, lon, radio);
+    const lado = Math.round(Math.min(400, Math.max(48, (2 * radio) / 10)));
+    const bandas = '["B02","B03","B04","B08","B11","B12","SCL","dataMask"]';
+    const script = `//VERSION=3
+function setup(){return{input:[{datasource:"antes",bands:${bandas}},{datasource:"ahora",bands:${bandas}}],output:{bands:3,sampleType:"UINT8"},mosaicking:"ORBIT"}}
+function med(a){if(!a.length)return null;a.sort(function(x,y){return x-y});var m=Math.floor(a.length/2);return a.length%2?a[m]:(a[m-1]+a[m])/2}
+function serie(arr){var v=[];for(var i=0;i<arr.length;i++){var s=arr[i];if(!s.dataMask)continue;if([0,1,3,8,9,10,11].indexOf(s.SCL)>=0)continue;v.push(${def.formula})}return med(v)}
+function enc(x){return x===null?0:Math.max(1,Math.min(255,Math.round((x+1)*127)))}
+function evaluatePixel(samples){return[enc(serie(samples.antes||[])),enc(serie(samples.ahora||[])),255]}`;
+    const token = await obtenerTokenCdse();
+    const dato = (id: string, a: Date, b: Date) => ({ id, type: "sentinel-2-l2a", dataFilter: { timeRange: { from: a.toISOString(), to: b.toISOString() }, maxCloudCoverage: 70 } });
+    const cuerpo = {
+      input: { bounds: { bbox, properties: { crs: "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } }, data: [dato("antes", desdeBase, hastaBase), dato("ahora", desde, hasta)] },
+      output: { width: lado, height: lado, responses: [{ identifier: "default", format: { type: "image/png" } }] },
+      evalscript: script
+    };
+    const r = await fetchSH("https://sh.dataspace.copernicus.eu/api/v1/process", {
+      method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" }, body: JSON.stringify(cuerpo)
+    });
+    if (!r.ok) {
+      const t = await r.text();
+      let msg = t.slice(0, 300);
+      try { msg = JSON.parse(t)?.error?.message || msg; } catch { /* texto */ }
+      if (r.status === 429) throw new Error("Sentinel Hub está limitando las consultas por minuto. Esperá un minuto y volvé a intentar.");
+      throw new Error(`Sentinel Hub (HTTP ${r.status}): ${msg}`);
+    }
+    const img = decodificarPng(new Uint8Array(await r.arrayBuffer()));
+    const W = img.width, H = img.height, ch = img.channels, px = img.data as Uint8Array;
+    const pxM = (2 * radio) / W;
+    const antes = new Uint8ClampedArray(W * H * 4), ahora = new Uint8ClampedArray(W * H * 4), cambio = new Uint8ClampedArray(W * H * 4);
+    let n = 0, sumA = 0, sumH = 0, sube = 0, baja = 0;
+    const umbral = def.rangoCambio / 3;
+    const pintar = (dst: Uint8ClampedArray, o: number, v: number) => {
+      const [R, G, B] = mezclar(def.colores, (v - def.min) / (def.max - def.min));
+      dst[o] = R; dst[o + 1] = G; dst[o + 2] = B; dst[o + 3] = 230;
+    };
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+      const i = y * W + x, o = i * 4;
+      if (Math.hypot((x + 0.5) * pxM - radio, (y + 0.5) * pxM - radio) > radio) continue;
+      const ea = px[i * ch], eh = px[i * ch + 1];
+      const va = ea ? ea / 127 - 1 : null, vh = eh ? eh / 127 - 1 : null;
+      if (va !== null) pintar(antes, o, va);
+      if (vh !== null) pintar(ahora, o, vh);
+      if (va === null || vh === null) continue;
+      n++; sumA += va; sumH += vh;
+      const d = vh - va;
+      if (d > umbral) sube++; else if (d < -umbral) baja++;
+      // Diferencia: azul/verde donde sube, ocre donde baja; casi transparente si no cambió
+      const t = Math.max(-1, Math.min(1, d / def.rangoCambio));
+      const col = t >= 0 ? hexRgb(def.colores[2]) : hexRgb(def.colores[0]);
+      cambio[o] = col[0]; cambio[o + 1] = col[1]; cambio[o + 2] = col[2];
+      cambio[o + 3] = Math.abs(d) < umbral ? 25 : Math.round(90 + 160 * Math.abs(t));
+    }
+    const url = (d: Uint8ClampedArray) => `data:image/png;base64,${Buffer.from(codificarPng({ width: W, height: H, data: d, channels: 4 })).toString("base64")}`;
+    const f = (d: Date) => d.toISOString().slice(0, 10);
+    const data = {
+      indice, nombre: def.nombre, bbox,
+      periodos: { antes: `${f(desdeBase)} a ${f(hastaBase)}`, ahora: `${f(desde)} a ${f(hasta)}` },
+      imagenes: { antes: url(antes), ahora: url(ahora), cambio: url(cambio) },
+      escala: { min: def.min, max: def.max, colores: def.colores, rangoCambio: def.rangoCambio, umbral: Number(umbral.toFixed(3)), sube: def.sube, baja: def.baja },
+      resumen: n ? {
+        media_antes: Number((sumA / n).toFixed(3)), media_ahora: Number((sumH / n).toFixed(3)),
+        pct_sube: Number(((sube / n) * 100).toFixed(1)), pct_baja: Number(((baja / n) * 100).toFixed(1)),
+        resolucion_m: Math.round(pxM)
+      } : null
+    };
+    cacheMapaIdx.set(clave, { t: Date.now(), data });
+    if (cacheMapaIdx.size > 200) cacheMapaIdx.delete(cacheMapaIdx.keys().next().value!);
+    res.set("Cache-Control", "private, max-age=3600");
+    return res.json(data);
+  } catch (e: any) {
+    return res.status(502).json({ error: e.message || "Error generando el mapa" });
+  }
+});
+
+// ---------------------------------------------------------------------------
 // Detección de derrames (candidatos) — análisis por píxel en el tiempo.
 //  * suelo: Sentinel-2. Píxel que se oscureció >30% en los últimos 20 días
 //    respecto de los 70 días previos, quedó oscuro y no es agua ni sombra.

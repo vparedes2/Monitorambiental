@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import maplibregl, { Map as MLMap } from "maplibre-gl";
 import Globo, { setGeo } from "../components/Globo";
 import { circuloKm } from "../lib/orbits";
-import { Loader2, Crosshair, ListChecks, FileDown } from "lucide-react";
+import { Loader2, Crosshair, ListChecks, FileDown, Map as IconoMapa, X } from "lucide-react";
 import { capturarMapa, generarInformePDF, nombreArchivo, type ItemLeyenda } from "../lib/exportar";
 import { useSesion } from "../lib/sesion";
 import { useInyeccion, leerIny, COHERENCIA } from "../lib/inyeccion";
@@ -211,6 +211,56 @@ export default function SueloAgua() {
     }
   }, [punto, radio, res, listo, catastro, lote]);
 
+  // Mapa del índice: año anterior, ahora y diferencia píxel por píxel
+  const [mapaIdx, setMapaIdx] = useState<{ indice: string; vista: "antes" | "ahora" | "cambio"; data?: MapaIndice; cargando?: boolean; error?: string } | null>(null);
+  const [parpadeo, setParpadeo] = useState(false);
+  const ponerCapaIdx = (data: MapaIndice | undefined, vista: "antes" | "ahora" | "cambio" | null) => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!data || !vista) {
+      if (map.getLayer("idx-img")) map.removeLayer("idx-img");
+      if (map.getSource("idx-img")) map.removeSource("idx-img");
+      return;
+    }
+    const [w, so, e, n] = data.bbox;
+    const coords: [[number, number], [number, number], [number, number], [number, number]] = [[w, n], [e, n], [e, so], [w, so]];
+    const src = map.getSource("idx-img") as maplibregl.ImageSource | undefined;
+    if (src) src.updateImage({ url: data.imagenes[vista], coordinates: coords });
+    else {
+      map.addSource("idx-img", { type: "image", url: data.imagenes[vista], coordinates: coords });
+      map.addLayer({ id: "idx-img", type: "raster", source: "idx-img", paint: { "raster-opacity": 1, "raster-resampling": "nearest", "raster-fade-duration": 0 } });
+    }
+  };
+  const verIndiceEnMapa = async (indice: string) => {
+    if (!punto) return;
+    if (mapaIdx?.indice === indice) { cerrarMapaIdx(); return; }
+    setParpadeo(false);
+    setMapaIdx({ indice, vista: "cambio", cargando: true });
+    try {
+      const r = await fetch(`/api/analisis/mapa?indice=${indice}&lat=${punto.lat.toFixed(5)}&lon=${punto.lon.toFixed(5)}&radio=${radio}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.error || `Error ${r.status}`);
+      setMapaIdx({ indice, vista: "cambio", data: d });
+      ponerCapaIdx(d, "cambio");
+    } catch (e: any) {
+      setMapaIdx({ indice, vista: "cambio", error: e.message });
+    }
+  };
+  const cambiarVista = (vista: "antes" | "ahora" | "cambio") => {
+    setMapaIdx((m) => (m ? { ...m, vista } : m));
+    ponerCapaIdx(mapaIdx?.data, vista);
+  };
+  const cerrarMapaIdx = () => { setParpadeo(false); setMapaIdx(null); ponerCapaIdx(undefined, null); };
+  // "Alternar": pasa de año anterior a ahora cada segundo para que el cambio salte a la vista
+  useEffect(() => {
+    if (!parpadeo || !mapaIdx?.data) return;
+    let v: "antes" | "ahora" = "antes";
+    const t = setInterval(() => { v = v === "antes" ? "ahora" : "antes"; setMapaIdx((m) => (m ? { ...m, vista: v } : m)); ponerCapaIdx(mapaIdx.data, v); }, 1100);
+    return () => clearInterval(t);
+  }, [parpadeo, mapaIdx?.data]);
+  // Si cambia el punto o el radio, la capa ya no corresponde
+  useEffect(() => { cerrarMapaIdx(); }, [punto?.lat, punto?.lon, radio, modo]);
+
   const analizar = async (p = punto, r = radio) => {
     if (!p) return;
     const map = mapRef.current;
@@ -341,6 +391,7 @@ export default function SueloAgua() {
           <p className="flex items-center gap-2 text-sm"><Crosshair className="w-4 h-4 text-hielo" /> Tocá el mapa para elegir el punto a analizar</p>
           {punto && <p className="num text-xs text-tenue mt-1">{punto.nombre ? `${punto.nombre}, ` : ""}{punto.lat.toFixed(4)}°, {punto.lon.toFixed(4)}°</p>}
         </div>
+        {mapaIdx && <PanelIndice m={mapaIdx} parpadeo={parpadeo} setParpadeo={setParpadeo} onVista={cambiarVista} onCerrar={cerrarMapaIdx} />}
       </section>
 
       <aside className="lg:w-[460px] border-l border-linea bg-panel/60">
@@ -401,7 +452,7 @@ export default function SueloAgua() {
         {modo === "cambios" && res && (
           <>
             <div className="px-5 pt-4"><BotonPdf onClick={exportarCambios} /></div>
-            <Informe res={res} serie={serie} setSerie={setSerie} />
+            <Informe res={res} serie={serie} setSerie={setSerie} indiceMapa={mapaIdx?.indice} onVerMapa={verIndiceEnMapa} />
           </>
         )}
         {modo === "derrames" && resDerrame && (
@@ -501,7 +552,7 @@ export default function SueloAgua() {
   );
 }
 
-function Informe({ res, serie, setSerie }: { res: Resultado; serie: string; setSerie: (s: string) => void }) {
+function Informe({ res, serie, setSerie, indiceMapa, onVerMapa }: { res: Resultado; serie: string; setSerie: (s: string) => void; indiceMapa?: string; onVerMapa: (i: string) => void }) {
   const fmt = (v: number | null, unidad?: string) => (v === null ? "N/D" : unidad ? `${v.toFixed(1)}` : v.toFixed(3));
   return (
     <div className="p-5 space-y-4">
@@ -524,6 +575,12 @@ function Informe({ res, serie, setSerie }: { res: Resultado; serie: string; setS
               año anterior {fmt(i.base, i.unidad)} → ahora {fmt(i.reciente, i.unidad)}{i.unidad ? ` ${i.unidad}` : ""}
             </p>
             <p className="text-sm mt-1.5 leading-snug">{i.lectura}</p>
+            {CON_MAPA.includes(i.id) && (
+              <button onClick={() => onVerMapa(i.id)} aria-pressed={indiceMapa === i.id}
+                className={`mt-2 inline-flex items-center gap-1.5 px-2 py-1 text-xs border ${indiceMapa === i.id ? "border-hielo text-hielo" : "border-linea text-tenue hover:text-hielo"}`}>
+                <IconoMapa className="w-3.5 h-3.5" /> {indiceMapa === i.id ? "Ocultar del mapa" : "Ver en el mapa: antes, ahora y cambio"}
+              </button>
+            )}
           </div>
         ))}
       </div>
@@ -835,6 +892,68 @@ function BarridoRio({ map }: { map: MLMap }) {
             })}
           </ul>
           <p className="text-[11px] text-tenue">{fuente}. Tocá un tramo para ir a él en el mapa.</p>
+        </>
+      )}
+    </div>
+  );
+}
+
+const CON_MAPA = ["agua", "humedad", "desnudo", "vegetacion", "quemado"];
+
+type MapaIndice = {
+  indice: string; nombre: string; bbox: number[];
+  periodos: { antes: string; ahora: string };
+  imagenes: { antes: string; ahora: string; cambio: string };
+  escala: { min: number; max: number; colores: [string, string, string]; rangoCambio: number; umbral: number; sube: string; baja: string };
+  resumen: { media_antes: number; media_ahora: number; pct_sube: number; pct_baja: number; resolucion_m: number } | null;
+};
+
+function PanelIndice({ m, parpadeo, setParpadeo, onVista, onCerrar }: {
+  m: { indice: string; vista: "antes" | "ahora" | "cambio"; data?: MapaIndice; cargando?: boolean; error?: string };
+  parpadeo: boolean; setParpadeo: (b: boolean) => void; onVista: (v: "antes" | "ahora" | "cambio") => void; onCerrar: () => void;
+}) {
+  const d = m.data, e = d?.escala;
+  return (
+    <div className="absolute left-4 right-4 sm:right-auto bottom-14 sm:w-[340px] instrumento px-4 py-3 z-10 text-sm">
+      <div className="flex items-start justify-between gap-2">
+        <p className="font-medium">{d?.nombre ?? "Preparando el mapa del índice…"}</p>
+        <button onClick={onCerrar} aria-label="Cerrar" className="text-tenue hover:text-hielo"><X className="w-4 h-4" /></button>
+      </div>
+      {m.cargando && <p className="flex items-center gap-2 text-xs text-tenue mt-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Calculando píxel por píxel los dos períodos…</p>}
+      {m.error && <p className="text-xs text-llama mt-2">{m.error}</p>}
+      {d && e && (
+        <>
+          <div className="flex text-xs border border-linea mt-2" role="group" aria-label="Qué mostrar">
+            {([["antes", "Año anterior"], ["ahora", "Ahora"], ["cambio", "Cambio"]] as const).map(([v, t]) => (
+              <button key={v} onClick={() => { setParpadeo(false); onVista(v); }} aria-pressed={m.vista === v}
+                className={`flex-1 px-2 py-1.5 ${m.vista === v ? "bg-hielo text-noche" : "text-hielo hover:bg-noche/50"}`}>{t}</button>
+            ))}
+          </div>
+          <button onClick={() => setParpadeo(!parpadeo)} className={`mt-1.5 w-full text-xs px-2 py-1 border ${parpadeo ? "border-lutita text-lutita" : "border-linea text-tenue hover:text-hielo"}`}>
+            {parpadeo ? "Detener alternado" : "Alternar año anterior y ahora"}
+          </button>
+          <p className="num text-[11px] text-tenue mt-2">
+            {m.vista === "antes" ? `Año anterior: ${d.periodos.antes}` : m.vista === "ahora" ? `Ahora: ${d.periodos.ahora}` : `Ahora (${d.periodos.ahora}) menos año anterior (${d.periodos.antes})`}
+          </p>
+          {m.vista === "cambio" ? (
+            <div className="mt-2 text-xs space-y-1">
+              <p className="flex items-center gap-2"><span className="w-3 h-3 shrink-0" style={{ background: e.colores[2] }} /> {e.sube} (más de {e.umbral})</p>
+              <p className="flex items-center gap-2"><span className="w-3 h-3 shrink-0" style={{ background: e.colores[0] }} /> {e.baja} (más de {e.umbral})</p>
+              <p className="flex items-center gap-2"><span className="w-3 h-3 shrink-0 border border-linea" /> Casi transparente: sin cambio</p>
+              <p className="text-tenue">Cuanto más intenso el color, mayor el cambio.</p>
+            </div>
+          ) : (
+            <div className="mt-2">
+              <div className="h-2.5" style={{ background: `linear-gradient(90deg, ${e.colores.join(",")})` }} />
+              <div className="num flex justify-between text-[10px] text-tenue mt-0.5"><span>{e.min}</span><span>{((e.min + e.max) / 2).toFixed(2)}</span><span>{e.max}</span></div>
+            </div>
+          )}
+          {d.resumen && (
+            <p className="text-xs mt-2 leading-snug">
+              Promedio {d.resumen.media_antes.toFixed(3)} → {d.resumen.media_ahora.toFixed(3)}. {e.sube}: <span className="num">{d.resumen.pct_sube}</span> % del área; {e.baja.toLowerCase()}: <span className="num">{d.resumen.pct_baja}</span> %.
+              <span className="block text-[10px] text-tenue mt-0.5">Mediana de las pasadas sin nubes de cada período, píxeles de {d.resumen.resolucion_m} m.</span>
+            </p>
+          )}
         </>
       )}
     </div>
