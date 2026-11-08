@@ -360,7 +360,7 @@ export default function Instalaciones() {
                   <div key={k} className="flex justify-between gap-3"><dt className="text-tenue shrink-0">{k}</dt><dd className="text-right">{typeof v === "number" ? v.toLocaleString("es-AR") : v}</dd></div>
                 ))}
               </dl>
-              {sel.tipo === "Foco térmico FIRMS" && mapRef.current && <ConfirmarS2 {...{ key: `${sel.lat},${sel.lon}` }} lat={sel.lat} lon={sel.lon} fecha={sel.fecha} mapa={mapRef.current} instalaciones={sig.instalaciones} venteos={sig.venteos} />}
+              {sel.tipo === "Foco térmico FIRMS" && mapRef.current && <ConfirmarS2 {...{ key: `${sel.lat},${sel.lon}` }} lat={sel.lat} lon={sel.lon} fecha={sel.fecha} mapa={mapRef.current} instalaciones={sig.instalaciones} venteos={sig.venteos} areas={sig.areas} />}
               {sel.idNacion && iny && (puede("instalaciones.nacion") || puede("instalaciones.tabla")) && <FichaInyeccion p={iny.pozos[sel.idNacion]} datos={iny} />}
               <div className="mt-3 flex gap-2 text-xs">
                 <button onClick={() => ir(sel.lat, sel.lon)} className="flex-1 px-2 py-1.5 border border-linea text-hielo hover:border-hielo">Acercar</button>
@@ -532,8 +532,9 @@ function FichaInyeccion({ p, datos }: { p?: InyPozo; datos: InyDatos }) {
 }
 
 /** Confirmación del foco con Sentinel-2: ubica la llama a 20 m y la asocia por distancia (150 m / 1 km) */
-function ConfirmarS2({ lat, lon, fecha, mapa, instalaciones, venteos }: { key?: string; lat: number; lon: number; fecha?: string; mapa: MLMap; instalaciones: any[]; venteos: any[] }) {
+function ConfirmarS2({ lat, lon, fecha, mapa, instalaciones, venteos, areas }: { key?: string; lat: number; lon: number; fecha?: string; mapa: MLMap; instalaciones: any[]; venteos: any[]; areas: any }) {
   const [estado, setEstado] = useState<"inicio" | "cargando" | "listo" | "error">("inicio");
+  const pozos = usePozosNeuquen(estado !== "inicio");
   const [r, setR] = useState<any>(null);
   const [err, setErr] = useState("");
   useEffect(() => () => { if (mapa.getLayer("s2conf")) mapa.removeLayer("s2conf"); if (mapa.getSource("s2conf")) mapa.removeSource("s2conf"); }, [mapa]);
@@ -570,6 +571,20 @@ function ConfirmarS2({ lat, lon, fecha, mapa, instalaciones, venteos }: { key?: 
       : { color: "text-llama", t: `Sin infraestructura conocida a menos de 1 km (la más cercana: ${mejor.nombre}, a ${(mejor.d / 1000).toFixed(1)} km).` };
   };
   const a = estado === "listo" ? asociar() : null;
+  // Dónde cae la llama: área, operadora y pozo más cercano (padrón nacional)
+  const ubicar = () => {
+    const c = r?.pasadas?.find((x: any) => x.calientes.length)?.calientes?.[0] ?? (r ? { lat, lon } : null);
+    if (!c) return null;
+    const area = areaDe(c.lat, c.lon, areas);
+    let pozo: { p: PozoIdx; d: number } | null = null;
+    for (const p of pozos?.pozos || []) {
+      if (Math.abs(p[6] - c.lat) > 0.03 || Math.abs(p[7] - c.lon) > 0.04) continue;
+      const d = distM(c.lat, c.lon, p[6], p[7]);
+      if (!pozo || d < pozo.d) pozo = { p, d };
+    }
+    return { area, pozo };
+  };
+  const u = estado === "listo" ? ubicar() : null;
   return (
     <div className="mt-3 border-t border-linea pt-3">
       {estado === "inicio" && <button onClick={correr} className="w-full px-3 py-2 text-xs border border-hielo text-hielo hover:bg-hielo hover:text-noche">Confirmar con Sentinel-2 (20 m)</button>}
@@ -580,6 +595,14 @@ function ConfirmarS2({ lat, lon, fecha, mapa, instalaciones, venteos }: { key?: 
           <p className={r.resultado === "confirmado" ? "text-ok font-medium" : "text-tenue"}>{r.resultado === "confirmado" ? "Llama confirmada" : r.resultado === "no_visible" ? "No se ve llama en la pasada" : "Sin pasadas útiles"}</p>
           <p className="leading-snug">{r.lectura}</p>
           {a && <p className={`leading-snug ${a.color}`}>{a.t}</p>}
+          {u && (
+            <dl className="space-y-1">
+              <div className="flex justify-between gap-3"><dt className="text-tenue">Área</dt><dd className="text-right">{u.area?.nombre ?? "Fuera de las áreas de Neuquén"}</dd></div>
+              {u.area?.operador && <div className="flex justify-between gap-3"><dt className="text-tenue">Operadora del área</dt><dd className="text-right">{u.area.operador}</dd></div>}
+              {u.pozo && <div className="flex justify-between gap-3"><dt className="text-tenue">Pozo más cercano</dt><dd className="text-right">{u.pozo.p[0]}, a {Math.round(u.pozo.d)} m<span className="block text-[10px] text-tenue">{pozos?.tipos[u.pozo.p[4]]} · {u.pozo.p[5]} · {u.pozo.p[3]}</span></dd></div>}
+              {!u.pozo && pozos && <div className="text-tenue">Sin pozos registrados a menos de 3 km.</div>}
+            </dl>
+          )}
           {r.pasadas.length > 0 && <p className="text-[10px] text-tenue">Pasadas revisadas: {r.pasadas.map((p: any) => `${p.fecha.slice(0, 10)} (${p.calientes.length} calientes)`).join(", ")}. En el mapa: color falso infrarrojo, la llama en rojo.</p>}
         </div>
       )}

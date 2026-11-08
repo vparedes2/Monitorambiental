@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import L from "leaflet";
 import { useSesion } from "../lib/sesion";
+import { useSigNeuquen, areaDe } from "../lib/neuquen";
 import "leaflet/dist/leaflet.css";
 import { 
   Flame, 
@@ -113,6 +114,7 @@ const nd = (v: number | null | undefined, suf = "") =>
 
 export default function VenteosMonitorModule() {
   const { puede } = useSesion();
+  const sigNqn = useSigNeuquen();
   // Live spatial join detections data and dynamic GeoJSON store
   const [cruces, setCruces] = useState<CruceEspacialVenteo[]>([]);
   const [selectedCruceState, setSelectedCruce] = useState<CruceEspacialVenteo | undefined>(undefined);
@@ -840,6 +842,8 @@ export default function VenteosMonitorModule() {
   const currentDet = selectedCruce.deteccion_satelital;
   const currentSig = selectedCruce.instalacion_sig;
   const currentImage = imagenSatelital(currentDet.latitud_satelital, currentDet.longitud_satelital);
+  // Área y operadora salen del polígono de concesión donde cae el foco, haya o no instalación cerca
+  const areaActual = areaDe(currentDet.latitud_satelital, currentDet.longitud_satelital, sigNqn.areas);
 
   return (
     <div className={`transition-colors duration-300 ${
@@ -1211,7 +1215,9 @@ export default function VenteosMonitorModule() {
                   {currentSig ? currentSig.nombre_oficial : `Anomalía Térmica ${currentDet.id_deteccion}`}
                 </h3>
                 <p className="text-xs text-teal-400 font-mono mt-0.5">
-                  Operador: {currentSig ? currentSig.operador_oficial : "Área no catastrada"}
+                  {areaActual
+                    ? <>Área {areaActual.nombre} · Operadora {areaActual.operador ?? "sin dato"}</>
+                    : currentSig ? <>Operador: {currentSig.operador_oficial}</> : <>Fuera de las áreas hidrocarburíferas de Neuquén</>}
                 </p>
               </div>
 
