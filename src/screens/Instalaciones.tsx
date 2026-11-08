@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useInyeccion, leerIny, COHERENCIA, type InyPozo, type InyDatos } from "../lib/inyeccion";
 import { useSesion } from "../lib/sesion";
+import { areaDe } from "../lib/neuquen";
 import type { Map as MLMap } from "maplibre-gl";
 import { motion, AnimatePresence } from "motion/react";
 import { FileDown, Search, X } from "lucide-react";
@@ -103,6 +104,42 @@ export default function Instalaciones() {
     return k;
   }, [cruce]);
   const venteosEstado = useMemo(() => estadoVenteos(sig.venteos, focos), [sig.venteos, focos]);
+
+  // Prioridad de revisión por área: suma ponderada de señales que una operadora tendría que poder explicar
+  const PESOS = { fuera: 4, instalacion: 3, vencido: 2, sumRevisar: 2, sumDejo: 1 } as const;
+  const prioridad = useMemo(() => {
+    const por = new globalThis.Map<string, { nombre: string; operador: string; fuera: number; instalacion: number; vencido: number; autorizado: number; sumRevisar: number; sumDejo: number; puntos: number }>();
+    const fila = (a: any) => {
+      const k = a?.nombre; if (!k) return null;
+      if (!por.has(k)) por.set(k, { nombre: k, operador: a.operador ?? "", fuera: 0, instalacion: 0, vencido: 0, autorizado: 0, sumRevisar: 0, sumDejo: 0, puntos: 0 });
+      return por.get(k)!;
+    };
+    for (const { c } of cruce) {
+      const r = c.area ? fila(c.area) : null; if (!r) continue;
+      if (c.clase === "fuera" || c.clase === "instalacion" || c.clase === "vencido" || c.clase === "autorizado") r[c.clase]++;
+    }
+    if (iny && sig.areas) {
+      const pozos = [...sig.sumideros.map((x) => ({ lat: x.lat, lon: x.lon, id: x.id_nacion })), ...((nacionRef.current?.features || []) as any[]).map((f) => ({ lat: f.geometry.coordinates[1], lon: f.geometry.coordinates[0], id: f.properties.id_nacion }))];
+      for (const p of pozos) {
+        const d = p.id != null ? iny.pozos[String(p.id)] : undefined; if (!d) continue;
+        const aviso = leerIny(d, iny).aviso;
+        if (aviso !== "activo_sin" && aviso !== "dejo") continue;
+        const r = fila(areaDe(p.lat, p.lon, sig.areas)); if (!r) continue;
+        if (aviso === "activo_sin") r.sumRevisar++; else r.sumDejo++;
+      }
+    }
+    const lista = [...por.values()].map((r) => ({ ...r, puntos: r.fuera * PESOS.fuera + r.instalacion * PESOS.instalacion + r.vencido * PESOS.vencido + r.sumRevisar * PESOS.sumRevisar + r.sumDejo * PESOS.sumDejo }))
+      .filter((r) => r.puntos > 0).sort((a, b) => b.puntos - a.puntos);
+    return lista;
+  }, [cruce, iny, sig.areas, sig.sumideros, nacionListo]);
+  const irArea = (nombre: string) => {
+    const f = (sig.areas?.features || []).find((x: any) => x.properties?.nombre === nombre);
+    const map = mapRef.current; if (!f || !map) return;
+    let w = 180, s0 = 90, e = -180, n = -90;
+    const rec = (c: any) => { if (typeof c[0] === "number") { w = Math.min(w, c[0]); e = Math.max(e, c[0]); s0 = Math.min(s0, c[1]); n = Math.max(n, c[1]); } else c.forEach(rec); };
+    rec(f.geometry.coordinates);
+    map.fitBounds([[w, s0], [e, n]], { padding: 60, duration: 900 });
+  };
   const operadoras = useMemo(() => [...new Set(sig.venteos.map((v) => v.empresa).filter(Boolean) as string[])].sort(), [sig.venteos]);
   const resumenVent = useMemo(() => ({
     vigentes: venteosEstado.filter((v) => v.vigente).length,
@@ -365,6 +402,33 @@ export default function Instalaciones() {
           {puede("instalaciones.tabla") && <a href="#/sumideros" className="mt-3 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs border border-linea text-hielo hover:border-hielo">Tabla de sumideros con inyección declarada →</a>}
         </div>
 
+        {puede("instalaciones.prioridad") && <div className="p-5 border-b border-linea">
+          <h2 className="titulo text-2xl font-semibold">Prioridad de revisión por área</h2>
+          <p className="text-xs text-tenue mt-1">Suma de señales del período elegido que una operadora tendría que poder explicar: focos lejos de instalaciones ({PESOS.fuera} puntos), en instalaciones sin permiso ({PESOS.instalacion}), con permiso vencido ({PESOS.vencido}), sumideros activos sin inyección declarada ({PESOS.sumRevisar}) o que dejaron de declarar ({PESOS.sumDejo}). Es una guía para ordenar el trabajo, no una infracción.</p>
+          {prioridad.length === 0 ? <p className="text-sm text-tenue mt-3">Sin señales en el período.</p> : (
+            <ol className="mt-3 space-y-2">
+              {prioridad.slice(0, 10).map((r, i) => (
+                <li key={r.nombre}>
+                  <button onClick={() => irArea(r.nombre)} className="w-full text-left group">
+                    <span className="flex items-baseline justify-between gap-2 text-sm">
+                      <span className="truncate"><span className="num text-tenue mr-1.5">{i + 1}</span>{r.nombre}<span className="text-tenue text-xs"> · {r.operador}</span></span>
+                      <span className="num text-hielo">{r.puntos}</span>
+                    </span>
+                    <span className="mt-1 block h-1.5 bg-linea"><span className="block h-full bg-llama" style={{ width: `${(r.puntos / prioridad[0].puntos) * 100}%` }} /></span>
+                    <span className="mt-1 flex flex-wrap gap-x-2.5 text-[11px] text-tenue">
+                      {r.fuera > 0 && <span>{r.fuera} lejos de instalaciones</span>}
+                      {r.instalacion > 0 && <span>{r.instalacion} sin permiso</span>}
+                      {r.vencido > 0 && <span>{r.vencido} permiso vencido</span>}
+                      {r.sumRevisar > 0 && <span>{r.sumRevisar} sumidero sin inyección</span>}
+                      {r.sumDejo > 0 && <span>{r.sumDejo} dejó de declarar</span>}
+                      {r.autorizado > 0 && <span className="text-ok">{r.autorizado} con permiso</span>}
+                    </span>
+                  </button>
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>}
         {puede("instalaciones.venteos") && <div className="p-5">
           <div className="flex items-baseline justify-between gap-2">
             <h2 className="titulo text-2xl font-semibold">Venteos autorizados</h2>

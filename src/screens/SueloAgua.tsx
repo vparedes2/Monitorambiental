@@ -76,10 +76,11 @@ const COLOR_NIVEL: Record<Nivel, string> = { alerta: "#FF5A3D", observar: "#F2C1
 const TEXTO_NIVEL: Record<Nivel, string> = { alerta: "Alerta", observar: "Observar", normal: "Sin cambios", sin_datos: "Sin datos" };
 
 const SERIES = [
-  { k: "ndwi", nombre: "Agua (NDWI)" },
+  { k: "ndwi", nombre: "Agua (MNDWI)" },
   { k: "ndmi", nombre: "Humedad (NDMI)" },
   { k: "ndvi", nombre: "Vegetación (NDVI)" },
-  { k: "bsi", nombre: "Suelo desnudo (BSI)" }
+  { k: "bsi", nombre: "Suelo desnudo (BSI)" },
+  { k: "nbr", nombre: "Quemado (NBR)" }
 ];
 
 export default function SueloAgua() {
@@ -250,8 +251,8 @@ export default function SueloAgua() {
         {
           titulo: "Serie de compuestos (últimos 60 días)",
           tabla: {
-            columnas: ["Fecha", "NDVI", "NDWI", "NDMI", "BSI", "% agua", "% suelo desnudo"],
-            filas: res.series.reciente.map((f: any) => [f.fecha, f.ndvi?.toFixed(3) ?? "-", f.ndwi?.toFixed(3) ?? "-", f.ndmi?.toFixed(3) ?? "-", f.bsi?.toFixed(3) ?? "-", f.agua !== null ? (f.agua * 100).toFixed(2) : "-", f.desnudo !== null ? (f.desnudo * 100).toFixed(2) : "-"])
+            columnas: ["Fecha", "NDVI", "MNDWI", "NDMI", "BSI", "NBR", "% agua", "% suelo desnudo"],
+            filas: res.series.reciente.map((f: any) => [f.fecha, f.ndvi?.toFixed(3) ?? "-", f.ndwi?.toFixed(3) ?? "-", f.ndmi?.toFixed(3) ?? "-", f.bsi?.toFixed(3) ?? "-", f.nbr?.toFixed(3) ?? "-", f.agua !== null ? (f.agua * 100).toFixed(2) : "-", f.desnudo !== null ? (f.desnudo * 100).toFixed(2) : "-"])
           }
         }
       ],

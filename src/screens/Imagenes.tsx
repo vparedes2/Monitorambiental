@@ -3,7 +3,7 @@ import maplibregl, { Map as MLMap } from "maplibre-gl";
 import Globo, { setGeo } from "../components/Globo";
 import { useFirms } from "../lib/useData";
 import Catalogo from "./Catalogo";
-import { Loader2, Download } from "lucide-react";
+import { Loader2, Download, ArrowLeftRight } from "lucide-react";
 
 interface Capa {
   id: string;
@@ -89,6 +89,8 @@ export default function Imagenes() {
   const [dias, setDias] = useState(10);
   const [area, setArea] = useState<"cuenca" | "vista">("cuenca");
   const [opacidad, setOpacidad] = useState(0.9);
+  const [comparar, setComparar] = useState(0);
+  const [antes, setAntes] = useState<{ url: string; coords: [[number, number], [number, number], [number, number], [number, number]]; etiqueta: string } | null>(null);
   const [verFocos, setVerFocos] = useState(true);
   const [cargando, setCargando] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -155,6 +157,15 @@ export default function Imagenes() {
         map.addLayer({ id: "imagen", type: "raster", source: "imagen", paint: { "raster-opacity": opacidad, "raster-fade-duration": 300 } }, map.getLayer("cuenca-relleno") ? "cuenca-relleno" : undefined);
       }
       setInfo(`${capa.nombre}, ${capa.satelite}, últimos ${dias} días`);
+      // Imagen de comparación: la misma ventana, desplazada hacia atrás
+      if (comparar > 0) {
+        const ra = await fetch(`/api/imagen?capa=${capaId}&dias=${dias}&hace=${comparar}&bbox=${bbox.map((x) => x.toFixed(4)).join(",")}&w=${ancho}&h=${alto}`);
+        if (!ra.ok) throw new Error((await ra.json().catch(() => ({}))).error || `Error ${ra.status} en la imagen anterior`);
+        const urlA = URL.createObjectURL(await ra.blob());
+        if (antes) URL.revokeObjectURL(antes.url);
+        const f = new Date(Date.now() - comparar * 86400000);
+        setAntes({ url: urlA, coords, etiqueta: f.toLocaleDateString("es-AR", { month: "long", year: "numeric" }) });
+      } else setAntes(null);
       setResImagen({ mPx: Math.max(nativa, anchoM / ancho), nativa });
       if (areaUsar === "cuenca") map.fitBounds([[w, s], [e, n]], { padding: 30, duration: 900 });
     } catch (e: any) {
@@ -226,6 +237,16 @@ export default function Imagenes() {
               </div>
             </div>
             <div>
+              <p className="text-xs text-tenue mb-1.5">Comparar con</p>
+              <div className="flex gap-1.5 flex-wrap">
+                {[[0, "No comparar"], [180, "Hace 6 meses"], [365, "Hace 1 año"], [730, "Hace 2 años"]].map(([d, t]) => (
+                  <button key={d} onClick={() => setComparar(d as number)} aria-pressed={comparar === d}
+                    className={`px-2.5 py-1 text-xs border ${comparar === d ? "border-hielo text-hielo" : "border-linea text-tenue"}`}>{t}</button>
+                ))}
+              </div>
+              {comparar > 0 && <p className="text-[11px] text-tenue mt-1.5">Se generan dos imágenes del mismo lugar. Arrastrá la cortina sobre el mapa para comparar antes y ahora.</p>}
+            </div>
+            <div>
               <p className="text-xs text-tenue mb-1.5">Área</p>
               <div className="flex gap-1.5">
                 <button onClick={() => setArea("cuenca")} aria-pressed={area === "cuenca"} className={`px-2.5 py-1 text-xs border ${area === "cuenca" ? "border-hielo text-hielo" : "border-linea text-tenue"}`}>Cuenca completa</button>
@@ -260,7 +281,7 @@ export default function Imagenes() {
               ...(verFocos ? [{ color: "#FF8A3D", texto: "Foco térmico NASA FIRMS (48 h)", forma: "circulo" as const }] : [])
             ]} />
           <details open={leyendaAbierta} onToggle={(e) => setLeyendaAbierta((e.target as HTMLDetailsElement).open)}
-            className="absolute left-4 top-4 right-4 sm:right-auto instrumento px-4 py-3 max-w-md">
+            className="absolute left-4 top-4 right-4 sm:right-auto instrumento px-4 py-3 max-w-md z-10">
             <summary className="font-medium cursor-pointer list-none flex items-start justify-between gap-3">
               <span>{info ?? capa.nombre}</span>
               <span className="text-xs text-hielo shrink-0 mt-0.5">{leyendaAbierta ? "Ocultar leyenda" : "Ver leyenda"}</span>
@@ -301,6 +322,7 @@ export default function Imagenes() {
               </div>
             </div>
           )}
+          {antes && mapRef.current && <Cortina mapa={mapRef.current} antes={antes} />}
           {imagenUrl && (
             <a href={imagenUrl} download={`vaca-muerta-${capaId}.png`} className="absolute right-4 bottom-10 flex items-center gap-1.5 px-3 py-1.5 text-xs border border-linea bg-noche/85 text-hielo hover:border-hielo">
               <Download className="w-3.5 h-3.5" /> Descargar PNG
@@ -316,6 +338,61 @@ export default function Imagenes() {
 
       {/* Pasadas recientes (catálogo) */}
       <Catalogo />
+    </div>
+  );
+}
+
+/** Cortina antes/después: un segundo mapa sincronizado con la imagen anterior, recortado hasta la línea que se arrastra */
+function Cortina({ mapa, antes }: { mapa: MLMap; antes: { url: string; coords: [[number, number], [number, number], [number, number], [number, number]]; etiqueta: string } }) {
+  const cont = useRef<HTMLDivElement>(null);
+  const caja = useRef<HTMLDivElement>(null);
+  const segundo = useRef<MLMap | null>(null);
+  const [pct, setPct] = useState(50);
+
+  useEffect(() => {
+    if (!cont.current) return;
+    const m2 = new maplibregl.Map({
+      container: cont.current, style: mapa.getStyle() as any, center: mapa.getCenter(), zoom: mapa.getZoom(),
+      bearing: mapa.getBearing(), pitch: mapa.getPitch(), interactive: false, attributionControl: false, fadeDuration: 0
+    });
+    segundo.current = m2;
+    const poner = () => {
+      const src = m2.getSource("imagen") as maplibregl.ImageSource | undefined;
+      if (src) src.updateImage({ url: antes.url, coordinates: antes.coords });
+      else { m2.addSource("imagen", { type: "image", url: antes.url, coordinates: antes.coords }); m2.addLayer({ id: "imagen", type: "raster", source: "imagen" }); }
+    };
+    // Con el estilo clonado la fuente "imagen" ya existe con la imagen nueva: reemplazarla apenas el estilo esté listo
+    let hecho = false;
+    const intentar = () => { if (hecho || !m2.isStyleLoaded()) return; hecho = true; poner(); };
+    m2.on("styledata", intentar);
+    m2.once("load", intentar);
+    const sync = () => m2.jumpTo({ center: mapa.getCenter(), zoom: mapa.getZoom(), bearing: mapa.getBearing(), pitch: mapa.getPitch() });
+    mapa.on("move", sync);
+    return () => { mapa.off("move", sync); m2.remove(); segundo.current = null; };
+  }, [mapa, antes]);
+
+  const arrastrar = (e: React.PointerEvent) => {
+    e.preventDefault();
+    const mover = (ev: PointerEvent) => {
+      const r = caja.current?.getBoundingClientRect();
+      if (r) setPct(Math.min(98, Math.max(2, ((ev.clientX - r.left) / r.width) * 100)));
+    };
+    const soltar = () => { window.removeEventListener("pointermove", mover); window.removeEventListener("pointerup", soltar); };
+    window.addEventListener("pointermove", mover);
+    window.addEventListener("pointerup", soltar);
+  };
+
+  return (
+    <div ref={caja} className="absolute inset-0 pointer-events-none z-[5]">
+      <div className="absolute inset-0" style={{ clipPath: `inset(0 ${100 - pct}% 0 0)` }}>
+        <div ref={cont} className="w-full h-full" />
+      </div>
+      <div className="absolute top-0 bottom-0 w-0.5 bg-hielo" style={{ left: `${pct}%` }}>
+        <button onPointerDown={arrastrar} aria-label="Arrastrar para comparar"
+          className="pointer-events-auto absolute top-1/2 -translate-y-1/2 -translate-x-1/2 left-1/2 w-9 h-9 rounded-full bg-hielo text-noche grid place-items-center shadow cursor-ew-resize touch-none"><ArrowLeftRight className="w-4 h-4" /></button>
+      </div>
+      <span className="absolute bottom-16 instrumento px-2 py-1 text-xs" style={{ right: `calc(${100 - pct}% + 8px)` }}>Antes: {antes.etiqueta}</span>
+      <span className="absolute bottom-16 instrumento px-2 py-1 text-xs" style={{ left: `calc(${pct}% + 8px)` }}>Ahora</span>
     </div>
   );
 }

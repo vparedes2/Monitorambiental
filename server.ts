@@ -439,7 +439,9 @@ app.get("/api/imagen", requiere("catalogo"), async (req, res) => {
     const ancho = Math.min(1400, Math.max(200, Number(req.query.w) || 1024));
     const alto = Math.min(1400, Math.max(200, Number(req.query.h) || 860));
     const dias = Math.min(60, Math.max(1, Number(req.query.dias) || def.dias));
-    const hasta = new Date();
+    // "hace": desplaza la ventana hacia atrás (comparación antes y después), hasta 3 años
+    const hace = Math.min(1095, Math.max(0, Number(req.query.hace) || 0));
+    const hasta = new Date(Date.now() - hace * 86400000);
     const desde = new Date(hasta.getTime() - dias * 24 * 3600 * 1000);
 
     const token = await obtenerTokenCdse();
@@ -482,16 +484,22 @@ app.get("/api/imagen", requiere("catalogo"), async (req, res) => {
 // descontar la estacionalidad. Reglas heurísticas documentadas en cada indicador.
 // ---------------------------------------------------------------------------
 const SCRIPT_SUELO_AGUA = `//VERSION=3
-function setup(){return{input:[{bands:["B02","B03","B04","B08","B11","SCL","dataMask"]}],output:[{id:"idx",bands:6,sampleType:"FLOAT32"},{id:"dataMask",bands:1}]}}
+function setup(){return{input:[{bands:["B02","B03","B04","B08","B11","B12","SCL","dataMask"]}],output:[{id:"idx",bands:8,sampleType:"FLOAT32"},{id:"dataMask",bands:1}]}}
 function evaluatePixel(s){
   const nube=[0,1,3,8,9,10,11].indexOf(s.SCL)>=0;
   const ndvi=(s.B08-s.B04)/(s.B08+s.B04+1e-6);
-  const ndwi=(s.B03-s.B08)/(s.B03+s.B08+1e-6);
+  // MNDWI (Xu 2006): verde contra SWIR; separa mejor el agua turbia de los ríos patagónicos que el NDWI
+  const mndwi=(s.B03-s.B11)/(s.B03+s.B11+1e-6);
   const ndmi=(s.B08-s.B11)/(s.B08+s.B11+1e-6);
   const bsi=((s.B11+s.B04)-(s.B08+s.B02))/((s.B11+s.B04)+(s.B08+s.B02)+1e-6);
-  const agua=(ndwi>0.05 || s.SCL==6)?1:0;
+  // NBR (Key y Benson): baja en suelo quemado o ennegrecido
+  const nbr=(s.B08-s.B12)/(s.B08+s.B12+1e-6);
+  const agua=(mndwi>0.1 || s.SCL==6)?1:0;
   const desnudo=(bsi>0.15 && ndvi<0.15)?1:0;
-  return {idx:[ndvi,ndwi,ndmi,bsi,agua,desnudo], dataMask:[(s.dataMask==1 && !nube)?1:0]};
+  // FAI (Hu 2009): algas o vegetación flotante sobre el agua
+  const fai=s.B08-(s.B04+(s.B11-s.B04)*0.1873);
+  const algas=(agua==1 && fai>0.02)?1:0;
+  return {idx:[ndvi,mndwi,ndmi,bsi,agua,desnudo,nbr,algas], dataMask:[(s.dataMask==1 && !nube)?1:0]};
 }`;
 
 // Sentinel Hub (CDSE) limita por minuto: ante un 429 espera lo que indica Retry-After (o 5, 10, 20 s) y reintenta
@@ -516,7 +524,7 @@ const circuloGeo = (lat: number, lon: number, radioM: number, n = 32) => {
   return { type: "Polygon", coordinates: [coords] };
 };
 
-const NOMBRES_IDX = ["ndvi", "ndwi", "ndmi", "bsi", "agua", "desnudo"];
+const NOMBRES_IDX = ["ndvi", "ndwi", "ndmi", "bsi", "agua", "desnudo", "nbr", "algas"];
 
 const serieEstadistica = async (token: string, geom: any, desde: Date, hasta: Date, lado: number) => {
   const cuerpo = {
@@ -608,14 +616,34 @@ const evaluarSueloAgua = (base: any[], reciente: any[]) => {
       if (d <= -0.07 || (b > 0.1 && rel <= -0.35)) return { nivel: "alerta", lectura: "Pérdida marcada de vegetación respecto del año anterior: desmonte, contaminación de suelo o sequía; verificar." };
       if (d <= -0.03 || (b > 0.1 && rel <= -0.15)) return { nivel: "observar", lectura: "Leve disminución de la vegetación respecto del año anterior." };
       return { nivel: "normal", lectura: "Vegetación similar al año anterior." };
+    }),
+    ind("quemado", "Suelo quemado (NBR)", "nbr", (b, r) => {
+      const d = b - r; // dNBR: cuánto bajó respecto del año anterior
+      if (d >= 0.1) return { nivel: "alerta", lectura: `El índice de quemado bajó ${d.toFixed(2)} respecto del año anterior: suelo quemado o ennegrecido, como alrededor de una antorcha, un incendio de pastizal o un derrame de crudo. Verificar en imagen.` };
+      if (d >= 0.05) return { nivel: "observar", lectura: "Leve oscurecimiento del suelo compatible con quema o manchado; verificar." };
+      return { nivel: "normal", lectura: "Sin señales de suelo quemado." };
     })
   ];
+  // Algas flotantes (FAI): solo tiene sentido si hay agua; ayuda a descartar falsas manchas del radar
+  {
+    const agua_r = med(reciente, "agua"), algas_r = med(reciente, "algas"), algas_b = med(base, "algas");
+    const frac = agua_r !== null && agua_r > 0.02 && algas_r !== null ? algas_r / agua_r : null;
+    indicadores.push({
+      id: "algas", nombre: "Algas o vegetación flotante (FAI)", base: algas_b !== null ? algas_b * 100 : null, reciente: algas_r !== null ? algas_r * 100 : null,
+      delta: algas_r !== null && algas_b !== null ? (algas_r - algas_b) * 100 : null, unidad: "% del área",
+      ...(frac === null
+        ? { nivel: "sin_datos" as Nivel, lectura: "No hay agua suficiente en el área para medir algas." }
+        : frac >= 0.2
+          ? { nivel: "observar" as Nivel, lectura: `Hay algas o vegetación flotando en el ${(frac * 100).toFixed(0)} % del agua. Una mancha oscura del radar en esta zona puede ser algas y no hidrocarburo.` }
+          : { nivel: "normal" as Nivel, lectura: `Sin algas relevantes en el agua (${(frac * 100).toFixed(0)} %).` })
+    } as any);
+  }
   // Los índices de suelo (humedad, vegetación, suelo desnudo) promedian toda el área: si buena parte es agua
   // no significan nada, y si el nivel del agua cambió entre años arrastran ese cambio
   const agua = indicadores[0];
   const fracAgua = Math.max(agua.base ?? 0, agua.reciente ?? 0) / 100;
   const cambioAgua = Math.abs(agua.delta ?? 0) / 100;
-  for (const i of indicadores.slice(1)) {
+  for (const i of indicadores.filter((x) => x.id !== "agua" && x.id !== "algas")) {
     if (fracAgua >= 0.5) {
       Object.assign(i, { nivel: "sin_datos" as Nivel, lectura: `El área es mayormente agua (${(fracAgua * 100).toFixed(0)} %): este índice de suelo no aplica. Para buscar manchas en el agua usá Derrames, en agua.` });
     } else if ((fracAgua >= 0.15 || cambioAgua >= 0.05) && i.nivel !== "normal" && i.nivel !== "sin_datos") {
@@ -649,7 +677,7 @@ const analizarPunto = async (lat: number, lon: number, radioM: number) => {
     },
     ...ev,
     series: { reciente, base },
-    metodo: "Sentinel-2 L2A a 20 m, nubes y sombras excluidas con la clasificación SCL. Medianas de compuestos de 5 días. Comparación contra el mismo período del año anterior. Umbrales heurísticos: requieren verificación en campo o con imagen."
+    metodo: "Sentinel-2 L2A a 20 m, nubes y sombras excluidas con la clasificación SCL. Medianas de compuestos de 5 días. Comparación contra el mismo período del año anterior. Agua con MNDWI (Xu 2006), suelo quemado con NBR (Key y Benson 2006), algas flotantes con FAI (Hu 2009), humedad con NDMI, vegetación con NDVI y suelo desnudo con BSI. Umbrales heurísticos: requieren verificación en campo o con imagen."
   };
 };
 
@@ -909,6 +937,20 @@ app.get("/api/derrames", requiere("suelo.derrame_suelo", "suelo.derrame_agua", "
       try { mascara = await mascaraDerrame(tipo, lat, lon, radio, umbral, techo); areaCand = mascara.area; } catch { /* queda el conteo por píxel */ }
     }
     const minM2 = MANCHA_MIN_M2[tipo];
+    // Agua con manchas: mirar la imagen óptica de los últimos 15 días; si hay algas flotantes, la mancha oscura puede ser eso
+    let notaAlgas = "", algasFrac: number | null = null;
+    if (tipo === "agua" && mascara && mascara.area > 0) {
+      try {
+        const hasta15 = new Date(), desde15 = new Date(hasta15.getTime() - 15 * 86400000);
+        const filas = await serieEstadistica(token, circuloGeo(lat, lon, radio), desde15, hasta15, Math.round(Math.min(150, Math.max(24, (2 * radio) / 20))));
+        const ult = [...filas].reverse().find((f) => (f.valido ?? 0) > 0.3 && (f.agua ?? 0) > 0.02);
+        if (ult) {
+          algasFrac = (ult.algas ?? 0) / ult.agua;
+          if (algasFrac >= 0.15) notaAlgas = ` La imagen óptica del ${ult.fecha} muestra algas o vegetación flotante en el ${(algasFrac * 100).toFixed(0)} % del agua: la mancha puede ser algas y no hidrocarburo.`;
+          else notaAlgas = ` La imagen óptica del ${ult.fecha} no muestra algas flotantes, lo que refuerza la sospecha.`;
+        }
+      } catch { /* sin imagen óptica útil */ }
+    }
     const notaSueltos = mascara && mascara.descartado > 0
       ? ` Se descartaron ${mascara.descartado.toLocaleString("es-AR")} m² en ${mascara.n_sueltos} puntos sueltos, menores a ${minM2.toLocaleString("es-AR")} m² (ruido normal ${tipo === "agua" ? "del radar" : "de la imagen"}).`
       : "";
@@ -931,7 +973,8 @@ app.get("/api/derrames", requiere("suelo.derrame_suelo", "suelo.derrame_agua", "
       if (areaCand >= 10000) { nivel = "alerta"; lectura = `En la última pasada de radar hay ${(areaCand / 10000).toFixed(1)} ha de agua anormalmente lisa (oscura) formando manchas continuas.${donde} Patrón compatible con una película de hidrocarburo; también puede ser agua sin viento o algas. Verificar.`; }
       else if (areaCand >= 2000) { nivel = "observar"; lectura = `Mancha oscura chica (${areaCand.toLocaleString("es-AR")} m²) en el agua en la última pasada de radar.${donde}`; }
       else { lectura = "Sin manchas anómalas en el agua en la última pasada de radar."; }
-      lectura += notaSueltos;
+      if (algasFrac !== null && algasFrac >= 0.3 && nivel === "alerta") nivel = "observar";
+      lectura += notaAlgas + notaSueltos;
     }
 
     const bbox = bboxCirculo(lat, lon, radio);
@@ -942,6 +985,7 @@ app.get("/api/derrames", requiere("suelo.derrame_suelo", "suelo.derrame_agua", "
       area_descartada_m2: mascara?.descartado ?? 0,
       mancha_minima_m2: minM2,
       manchas: mascara?.manchas ?? [],
+      algas_pct: algasFrac !== null ? Math.round(algasFrac * 100) : null,
       periodo: { desde: cfg.desde.toISOString().slice(0, 10), hasta: cfg.hasta.toISOString().slice(0, 10), corte: cfg.corte ? cfg.corte.toISOString().slice(0, 10) : null },
       imagen: { url: `/api/derrames/imagen?tipo=${tipo}&lat=${lat}&lon=${lon}&radio=${radio}&umbral=${umbral.toFixed(2)}&techo=${techo.toFixed(2)}`, bbox },
       oscurecimiento_general_db: anomMediana,
