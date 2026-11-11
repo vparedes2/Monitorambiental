@@ -544,12 +544,22 @@ function evaluatePixel(s){
 // Sentinel Hub (CDSE) limita por minuto: ante un 429 espera lo que indica Retry-After (o 5, 10, 20 s) y reintenta
 const esperar = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const fetchSH = async (url: string, init: RequestInit) => {
+  // Tope total de 45 s (reintentos incluidos): la función de Vercel corta a los 120 s
+  const limite = Date.now() + 45000;
   let espera = 5000;
   for (let intento = 0; ; intento++) {
-    const r = await fetch(url, init);
+    const resta = limite - Date.now();
+    let r: Response;
+    try { r = await fetch(url, { ...init, signal: AbortSignal.timeout(Math.max(5000, resta)) }); }
+    catch (e: any) {
+      if (e?.name === "TimeoutError" || e?.name === "AbortError") throw new Error("Sentinel Hub no respondió a tiempo. Probá de nuevo en un minuto o con un radio más chico.");
+      throw e;
+    }
     if (r.status !== 429 || intento >= 3) return r;
     const ra = Number(r.headers.get("retry-after"));
-    await esperar(Math.min(25000, Number.isFinite(ra) && ra > 0 ? ra * 1000 : espera));
+    const pausa = Math.min(25000, Number.isFinite(ra) && ra > 0 ? ra * 1000 : espera);
+    if (Date.now() + pausa > limite) return r;
+    await esperar(pausa);
     espera *= 2;
   }
 };
@@ -629,7 +639,8 @@ type Lluvia = { reciente_mm: number; base_mm: number; fuente: string };
 const cacheLluvia = new Map<string, { t: number; v: Lluvia | null }>();
 const llovioMas = (l: Lluvia) => l.reciente_mm >= l.base_mm + 15 && l.reciente_mm >= l.base_mm * 1.5;
 const sumaLluvia = async (url: string) => {
-  const r = await fetch(url, { headers: { "User-Agent": "monitor-ambiental" } });
+  // Corte a los 8 s: la lluvia es un dato de apoyo y no puede frenar el análisis
+  const r = await fetch(url, { headers: { "User-Agent": "monitor-ambiental" }, signal: AbortSignal.timeout(8000) });
   if (!r.ok) throw new Error(`Open-Meteo HTTP ${r.status}`);
   const d = await r.json();
   const v: (number | null)[] = d?.daily?.precipitation_sum || [];

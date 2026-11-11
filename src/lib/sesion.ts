@@ -56,12 +56,22 @@ const fetchOriginal = window.fetch.bind(window);
 window.fetch = (entrada: RequestInfo | URL, init?: RequestInit) => {
   const url = typeof entrada === "string" ? entrada : entrada instanceof URL ? entrada.href : entrada.url;
   const propio = url.startsWith("/api/") || url.startsWith(`${location.origin}/api/`);
-  if (propio && sesionActual?.access_token) {
-    const headers = new Headers(init?.headers || (entrada instanceof Request ? entrada.headers : undefined));
-    if (!headers.has("Authorization")) headers.set("Authorization", `Bearer ${sesionActual.access_token}`);
-    return fetchOriginal(entrada, { ...init, headers });
-  }
-  return fetchOriginal(entrada, init);
+  const pedido = propio && sesionActual?.access_token
+    ? (() => {
+        const headers = new Headers(init?.headers || (entrada instanceof Request ? entrada.headers : undefined));
+        if (!headers.has("Authorization")) headers.set("Authorization", `Bearer ${sesionActual!.access_token}`);
+        return fetchOriginal(entrada, { ...init, headers });
+      })()
+    : fetchOriginal(entrada, init);
+  if (!propio) return pedido;
+  // Si el servidor corta (tiempo agotado) responde una página de texto: se convierte en un error legible
+  return pedido.then((r) => {
+    if (r.ok || (r.headers.get("content-type") || "").includes("json")) return r;
+    const msg = r.status === 504 || r.status === 502
+      ? "El satélite tardó demasiado en responder. Probá de nuevo en un minuto o con un radio más chico."
+      : `El servidor respondió con un error (${r.status}). Probá de nuevo.`;
+    return new Response(JSON.stringify({ error: msg }), { status: r.status, headers: { "Content-Type": "application/json" } });
+  });
 };
 
 /** Se usa una sola vez, en App; el resto de la interfaz lee el contexto con useSesion() */
