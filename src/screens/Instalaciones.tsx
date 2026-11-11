@@ -551,7 +551,7 @@ function ConfirmarS2({ lat, lon, fecha, mapa, instalaciones, venteos, areas }: {
         const coords: [[number, number], [number, number], [number, number], [number, number]] = [[w, n], [e, n], [e, s], [w, s]];
         const src = mapa.getSource("s2conf") as maplibregl.ImageSource | undefined;
         if (src) src.updateImage({ url: p.imagen, coordinates: coords });
-        else { mapa.addSource("s2conf", { type: "image", url: p.imagen, coordinates: coords }); mapa.addLayer({ id: "s2conf", type: "raster", source: "s2conf", paint: { "raster-opacity": 0.9, "raster-resampling": "nearest" } }); }
+        else { mapa.addSource("s2conf", { type: "image", url: p.imagen, coordinates: coords }); mapa.addLayer({ id: "s2conf", type: "raster", source: "s2conf", paint: { "raster-opacity": 0.9 } }); }
         mapa.flyTo({ center: [lon, lat], zoom: 14, duration: 900 });
       }
     } catch (e: any) { setErr(e.message); setEstado("error"); }

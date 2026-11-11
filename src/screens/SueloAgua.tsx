@@ -184,7 +184,7 @@ export default function SueloAgua() {
         if (src) src.updateImage({ url, coordinates: coords });
         else {
           map.addSource("derrame-img", { type: "image", url, coordinates: coords });
-          map.addLayer({ id: "derrame-img", type: "raster", source: "derrame-img", paint: { "raster-opacity": 1, "raster-resampling": "nearest" } });
+          map.addLayer({ id: "derrame-img", type: "raster", source: "derrame-img", paint: { "raster-opacity": 1 } });
         }
       }
     } catch (e: any) {
@@ -256,7 +256,7 @@ export default function SueloAgua() {
     if (src) src.updateImage({ url, coordinates: coords });
     else {
       map.addSource("idx-img", { type: "image", url, coordinates: coords });
-      map.addLayer({ id: "idx-img", type: "raster", source: "idx-img", paint: { "raster-opacity": 1, "raster-resampling": "nearest", "raster-fade-duration": 0 } });
+      map.addLayer({ id: "idx-img", type: "raster", source: "idx-img", paint: { "raster-opacity": 1, "raster-fade-duration": 0 } });
     }
   };
   const verIndiceEnMapa = async (indice: string) => {
