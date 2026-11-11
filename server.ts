@@ -1258,6 +1258,15 @@ const mascaraDerrame = async (tipo: "suelo" | "agua", lat: number, lon: number, 
   validas.forEach((m) => m.px.forEach((k) => out.set([255, 38, 25, 245], k * 4)));
   sueltos.forEach((m) => m.px.forEach((k) => out.set([214, 206, 196, 120], k * 4)));
   const png = Buffer.from(codificarPng({ width: W, height: H, data: out, channels: 4 }));
+  {
+    // Diagnóstico: cuántos píxeles llegan opacos y negros desde Sentinel Hub y cuántos quedan visibles
+    let opacosIn = 0, negrosIn = 0, visiblesOut = 0;
+    for (let i = 0; i < W * H; i++) {
+      if (px[i * 4 + 3] > 8) { opacosIn++; if (px[i * 4] < 16 && px[i * 4 + 1] < 16 && px[i * 4 + 2] < 16) negrosIn++; }
+      if (out[i * 4 + 3] > 8) visiblesOut++;
+    }
+    console.log("derrame-alfa", tipo, JSON.stringify({ px: W * H, opacosIn, negrosIn, visiblesOut, cand: validas.length, sueltos: sueltos.length }));
+  }
   cacheMascara.set(clave, { t: Date.now(), png });
   if (cacheMascara.size > 60) cacheMascara.delete(cacheMascara.keys().next().value!);
   return {
