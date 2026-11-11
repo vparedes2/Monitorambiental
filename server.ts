@@ -1249,6 +1249,36 @@ const mascaraDerrame = async (tipo: "suelo" | "agua", lat: number, lon: number, 
   };
 };
 
+/** Pasadas del satélite sobre el área en la ventana del análisis (catálogo de Copernicus).
+ *  Sirve para decir de cuándo es la imagen en la que se vieron las manchas. */
+const pasadasCatalogo = async (token: string, tipo: "suelo" | "agua", bbox: number[], desde: Date, hasta: Date, corte: Date | null) => {
+  const coleccion = tipo === "agua" ? "sentinel-1-grd" : "sentinel-2-l2a";
+  const r = await fetchSH("https://sh.dataspace.copernicus.eu/api/v1/catalog/1.0.0/search", {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ collections: [coleccion], bbox, datetime: `${desde.toISOString()}/${hasta.toISOString()}`, limit: 100,
+      fields: { include: ["properties.datetime", "properties.eo:cloud_cover", "properties.sar:instrument_mode", "properties.platform"] } })
+  });
+  if (!r.ok) return null;
+  const feats: any[] = (await r.json()).features || [];
+  const items = feats
+    .map((f) => ({ fecha: String(f.properties?.datetime || ""), nubes: f.properties?.["eo:cloud_cover"] ?? null, modo: f.properties?.["sar:instrument_mode"] ?? null, plataforma: f.properties?.platform ?? null }))
+    .filter((i) => i.fecha && (tipo === "suelo" ? i.nubes === null || i.nubes <= 60 : !i.modo || i.modo === "IW"));
+  // Varias escenas del mismo paso (tiles contiguos) cuentan como una sola pasada
+  const porPaso = new Map<string, typeof items[number]>();
+  for (const i of items) { const k = i.fecha.slice(0, 13); if (!porPaso.has(k)) porPaso.set(k, i); }
+  const lista = [...porPaso.values()].sort((a, b) => b.fecha.localeCompare(a.fecha));
+  const recientes = corte ? lista.filter((i) => i.fecha >= corte.toISOString()) : lista;
+  return {
+    satelite: tipo === "agua" ? "Sentinel-1 (radar)" : "Sentinel-2 (óptico)",
+    ultima: lista[0]?.fecha ?? null,
+    ultima_nubes: tipo === "suelo" ? lista[0]?.nubes ?? null : null,
+    plataforma: lista[0]?.plataforma ?? null,
+    total: lista.length,
+    recientes: recientes.length,
+    fechas: lista.slice(0, 8).map((i) => i.fecha)
+  };
+};
+
 app.get("/api/derrames", requiere("suelo.derrame_suelo", "suelo.derrame_agua", "suelo.barridos"), async (req, res) => {
   try {
     const tipo = req.query.tipo === "agua" ? "agua" : "suelo";
@@ -1361,8 +1391,9 @@ app.get("/api/derrames", requiere("suelo.derrame_suelo", "suelo.derrame_agua", "
     }
 
     const bbox = bboxCirculo(lat, lon, radio);
+    const pasadas = await pasadasCatalogo(token, tipo, bbox, cfg.desde, cfg.hasta, cfg.corte).catch(() => null);
     return res.json({
-      tipo, punto: { lat, lon }, radio_m: radio, nivel, lectura,
+      tipo, punto: { lat, lon }, radio_m: radio, nivel, lectura, pasadas,
       area_candidata_m2: areaCand,
       area_analizada_m2: areaBase,
       area_descartada_m2: mascara?.descartado ?? 0,

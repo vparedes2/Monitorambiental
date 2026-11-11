@@ -50,8 +50,33 @@ interface ResultadoDerrame {
   mancha_minima_m2?: number;
   manchas?: { area_m2: number; lat: number; lon: number }[];
   periodo: { desde: string; hasta: string; corte: string | null };
+  pasadas?: { satelite: string; ultima: string | null; ultima_nubes: number | null; plataforma: string | null; total: number; recientes: number; fechas: string[] } | null;
   metodo: string;
 }
+
+/** "2026-11-09T09:12:31Z" → "9 de noviembre de 2026, 06:12 h" (hora de Argentina) */
+const fechaPasada = (iso: string) => {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const f = d.toLocaleDateString("es-AR", { day: "numeric", month: "long", year: "numeric", timeZone: "America/Argentina/Buenos_Aires" });
+  const h = d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: "America/Argentina/Buenos_Aires" });
+  return `${f}, ${h} h`;
+};
+const haceDias = (iso: string) => {
+  const dias = Math.floor((Date.now() - new Date(iso).getTime()) / 86400000);
+  return dias <= 0 ? "hoy" : dias === 1 ? "hace 1 día" : `hace ${dias} días`;
+};
+/** Texto de la última pasada según el satélite, igual en pantalla y en el PDF */
+const textoPasada = (r: ResultadoDerrame) => {
+  const p = r.pasadas;
+  if (!p) return null;
+  if (!p.ultima) return `${p.satelite}: no hubo pasadas en el período.`;
+  const sat = p.plataforma ? `${p.plataforma.replace(/^sentinel-?(\w+)$/i, (_, x: string) => `Sentinel-${x.toUpperCase()}`)} (${r.tipo === "agua" ? "radar" : "óptico"})` : p.satelite;
+  const base = `Última pasada de ${sat}: ${fechaPasada(p.ultima)} (${haceDias(p.ultima)})${p.ultima_nubes !== null ? `, ${Math.round(p.ultima_nubes)} % de nubes en la escena` : ""}.`;
+  return r.tipo === "agua"
+    ? `${base} Las manchas son de esa pasada, comparada con las ${p.total - 1} anteriores de los últimos 36 días.`
+    : `${base} Se compararon ${p.recientes} pasada${p.recientes === 1 ? "" : "s"} de los últimos 20 días contra ${p.total - p.recientes} anteriores.`;
+};
 
 /** Guía para leer la imagen de derrames, la misma en pantalla y en el PDF */
 const comoLeer = (tipo: "suelo" | "agua", min = tipo === "agua" ? 2000 : 800): { color?: string; texto: string }[] =>
@@ -369,14 +394,14 @@ export default function SueloAgua() {
         {
           titulo: "Resultado",
           tabla: {
-            columnas: ["Área candidata", "Área analizada", "Período", "Nivel"],
-            filas: [[`${resDerrame.area_candidata_m2.toLocaleString("es-AR")} m²`, `${(resDerrame.area_analizada_m2 / 10000).toLocaleString("es-AR", { maximumFractionDigits: 1 })} ha`, `${resDerrame.periodo.desde} a ${resDerrame.periodo.hasta}${resDerrame.periodo.corte ? ` (corte ${resDerrame.periodo.corte})` : ""}`, resDerrame.nivel === "normal" ? "Sin indicios" : TEXTO_NIVEL[resDerrame.nivel]]]
+            columnas: ["Área candidata", "Área analizada", "Período", "Última pasada", "Nivel"],
+            filas: [[`${resDerrame.area_candidata_m2.toLocaleString("es-AR")} m²`, `${(resDerrame.area_analizada_m2 / 10000).toLocaleString("es-AR", { maximumFractionDigits: 1 })} ha`, `${resDerrame.periodo.desde} a ${resDerrame.periodo.hasta}${resDerrame.periodo.corte ? ` (corte ${resDerrame.periodo.corte})` : ""}`, resDerrame.pasadas?.ultima ? fechaPasada(resDerrame.pasadas.ultima) : "Sin dato", resDerrame.nivel === "normal" ? "Sin indicios" : TEXTO_NIVEL[resDerrame.nivel]]]
           }
         },
         ...(resDerrame.manchas && resDerrame.manchas.length
           ? [{ titulo: "Manchas que cuentan", tabla: { columnas: ["Mancha", "Área (m²)", "Centro (lat, lon)"], filas: resDerrame.manchas.map((m, i) => [String(i + 1), m.area_m2.toLocaleString("es-AR"), `${m.lat}, ${m.lon}`]) } }]
           : []),
-        { titulo: "Lectura", texto: [resDerrame.lectura, "Es un indicio a verificar en campo, no una confirmación."] },
+        { titulo: "Lectura", texto: [...(textoPasada(resDerrame) ? [textoPasada(resDerrame)!] : []), resDerrame.lectura, "Es un indicio a verificar en campo, no una confirmación."] },
         { titulo: "Cómo leer la imagen", texto: comoLeer(resDerrame.tipo, resDerrame.mancha_minima_m2).map((x) => x.texto) }
       ],
       metodo: resDerrame.metodo,
@@ -694,6 +719,14 @@ function InformeDerrame({ r }: { r: ResultadoDerrame }) {
           <p className="text-xs text-tenue mt-1">ha analizadas {r.tipo === "agua" ? "(solo agua)" : "(con datos)"}</p>
         </div>
       </div>
+      {textoPasada(r) && (
+        <p className="text-sm leading-snug border-l-2 border-hielo pl-2">
+          {textoPasada(r)}
+          {r.pasadas && r.pasadas.fechas.length > 1 && (
+            <span className="block num text-[11px] text-tenue mt-0.5">Pasadas anteriores: {r.pasadas.fechas.slice(1, 6).map((f) => f.slice(0, 10)).join(" · ")}</span>
+          )}
+        </p>
+      )}
       <p className="text-sm leading-snug">{r.lectura}</p>
       {r.manchas && r.manchas.length > 0 && (
         <ul className="text-xs space-y-1">
