@@ -1170,7 +1170,7 @@ const bboxCirculo = (lat: number, lon: number, radioM: number) => {
 // Mancha mínima que cuenta: los píxeles sueltos son ruido (speckle del radar, bordes de nube)
 const MANCHA_MIN_M2 = { agua: 2000, suelo: 800 } as const;
 const cacheMascara = new Map<string, { t: number; png: Buffer }>();
-const VERSION_IMAGEN = 3;
+const VERSION_IMAGEN = 4;
 
 /** Pide la máscara a Sentinel Hub, agrupa los candidatos en manchas continuas (8 vecinos)
  *  y descarta las menores al mínimo. Devuelve el área que cuenta y la imagen re-dibujada. */
@@ -1196,7 +1196,12 @@ const mascaraDerrame = async (tipo: "suelo" | "agua", lat: number, lon: number, 
     try { msg = JSON.parse(t)?.error?.message || msg; } catch { /* texto */ }
     throw new Error(`Sentinel Hub (HTTP ${r.status}): ${msg}`);
   }
-  const img = pngRGBA(new Uint8Array(await r.arrayBuffer()));
+  const crudo = new Uint8Array(await r.arrayBuffer());
+  try {
+    const info: any = decodificarPng(crudo);
+    console.log("derrame-png", tipo, JSON.stringify({ w: info.width, ch: info.channels, depth: info.depth, paleta: !!info.palette, trns: info.transparency ? Array.from(info.transparency) : null }));
+  } catch { /* solo diagnóstico */ }
+  const img = pngRGBA(crudo);
   const W = img.width, H = img.height, ch = img.channels, px = img.data as Uint8Array;
   const pxM = (2 * radio) / W;
   // Solo cuenta lo que cae dentro del círculo
@@ -1234,7 +1239,10 @@ const mascaraDerrame = async (tipo: "suelo" | "agua", lat: number, lon: number, 
   const out = new Uint8Array(W * H * 4);
   for (let i = 0; i < W * H; i++) {
     const o = i * ch, a = ch === 4 ? px[o + 3] : 255;
-    out.set(cand[i] ? [0, 0, 0, 0] : [px[o], px[o + 1], px[o + 2], dentro(i % W, Math.floor(i / W)) ? a : Math.round(a * 0.4)], i * 4);
+    // El script solo pinta candidatos (rojo), cambio moderado (naranja) y agua (azul): un píxel negro
+    // es fondo, aunque el PNG lo traiga opaco, y se deja transparente
+    const negro = px[o] < 16 && px[o + 1] < 16 && px[o + 2] < 16;
+    out.set(cand[i] || negro || a < 8 ? [0, 0, 0, 0] : [px[o], px[o + 1], px[o + 2], dentro(i % W, Math.floor(i / W)) ? a : Math.round(a * 0.4)], i * 4);
   }
   validas.forEach((m) => m.px.forEach((k) => out.set([255, 38, 25, 245], k * 4)));
   sueltos.forEach((m) => m.px.forEach((k) => out.set([214, 206, 196, 120], k * 4)));
