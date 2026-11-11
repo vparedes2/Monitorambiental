@@ -1170,6 +1170,7 @@ const bboxCirculo = (lat: number, lon: number, radioM: number) => {
 // Mancha mínima que cuenta: los píxeles sueltos son ruido (speckle del radar, bordes de nube)
 const MANCHA_MIN_M2 = { agua: 2000, suelo: 800 } as const;
 const cacheMascara = new Map<string, { t: number; png: Buffer }>();
+const VERSION_IMAGEN = 3;
 
 /** Pide la máscara a Sentinel Hub, agrupa los candidatos en manchas continuas (8 vecinos)
  *  y descarta las menores al mínimo. Devuelve el área que cuenta y la imagen re-dibujada. */
@@ -1401,7 +1402,8 @@ app.get("/api/derrames", requiere("suelo.derrame_suelo", "suelo.derrame_agua", "
       manchas: mascara?.manchas ?? [],
       algas_pct: algasFrac !== null ? Math.round(algasFrac * 100) : null,
       periodo: { desde: cfg.desde.toISOString().slice(0, 10), hasta: cfg.hasta.toISOString().slice(0, 10), corte: cfg.corte ? cfg.corte.toISOString().slice(0, 10) : null },
-      imagen: { url: `/api/derrames/imagen?tipo=${tipo}&lat=${lat}&lon=${lon}&radio=${radio}&umbral=${umbral.toFixed(2)}&techo=${techo.toFixed(2)}`, bbox },
+      // v= cambia cuando cambia cómo se dibuja la imagen: evita que el navegador muestre una versión vieja guardada
+      imagen: { url: `/api/derrames/imagen?tipo=${tipo}&lat=${lat}&lon=${lon}&radio=${radio}&umbral=${umbral.toFixed(2)}&techo=${techo.toFixed(2)}&v=${VERSION_IMAGEN}`, bbox },
       oscurecimiento_general_db: anomMediana,
       metodo: tipo === "suelo"
         ? "Sentinel-2 L2A (20 m). Por cada píxel: mediana de brillo de los 70 días previos vs. los últimos 20 días, sin nubes ni sombras (SCL). Candidato si cae >30%, queda oscuro (<0,12), no es agua y perdió o no tenía vegetación. Solo cuentan manchas continuas de al menos 800 m²; los píxeles sueltos se descartan."
