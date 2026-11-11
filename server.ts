@@ -29,17 +29,33 @@ import { decode as decodificarPng, encode as codificarPng } from "fast-png";
 const pngRGBA = (bytes: Uint8Array) => {
   const img: any = decodificarPng(bytes);
   const W = img.width, H = img.height, ch = img.channels, src = img.data, prof = img.depth || 8;
+  const pal: number[][] | undefined = img.palette;
+  const trns: ArrayLike<number> | undefined = img.transparency; // color transparente (gris o RGB) cuando no hay canal alfa
+  const maxV = (1 << prof) - 1;
+  // Profundidad menor a 8 bits: muestras empaquetadas por fila
+  const porFila = Math.ceil((W * ch * prof) / 8);
+  const muestra = (i: number, c: number) => {
+    if (prof >= 8) return src[i * ch + c];
+    const x = i % W, y = (i - x) / W, bit = (x * ch + c) * prof;
+    return (src[y * porFila + (bit >> 3)] >> (8 - prof - (bit & 7))) & maxV;
+  };
+  const a8 = (v: number) => (prof === 16 ? v >> 8 : prof < 8 ? Math.round((v * 255) / maxV) : v);
   const out = new Uint8Array(W * H * 4);
-  const v = (x: number) => (prof === 16 ? x >> 8 : x);
   for (let i = 0; i < W * H; i++) {
-    let r, g, b, a = 255;
-    if (img.palette && ch === 1) {
-      const c = img.palette[src[i]] || [0, 0, 0];
-      [r, g, b] = c; if (c.length > 3) a = c[3];
+    let r: number, g: number, b: number, a = 255;
+    if (pal && ch === 1) {
+      const c = pal[muestra(i, 0)] || [0, 0, 0, 0];
+      r = c[0]; g = c[1]; b = c[2]; if (c.length > 3) a = c[3];
     } else if (ch === 1 || ch === 2) {
-      r = g = b = v(src[i * ch]); if (ch === 2) a = v(src[i * ch + 1]);
+      const v = muestra(i, 0);
+      r = g = b = a8(v);
+      if (ch === 2) a = a8(muestra(i, 1));
+      else if (trns && trns.length >= 1 && v === trns[0]) a = 0;
     } else {
-      r = v(src[i * ch]); g = v(src[i * ch + 1]); b = v(src[i * ch + 2]); if (ch === 4) a = v(src[i * ch + 3]);
+      const R = muestra(i, 0), G = muestra(i, 1), B = muestra(i, 2);
+      r = a8(R); g = a8(G); b = a8(B);
+      if (ch === 4) a = a8(muestra(i, 3));
+      else if (trns && trns.length >= 3 && R === trns[0] && G === trns[1] && B === trns[2]) a = 0;
     }
     out[i * 4] = r; out[i * 4 + 1] = g; out[i * 4 + 2] = b; out[i * 4 + 3] = a;
   }
