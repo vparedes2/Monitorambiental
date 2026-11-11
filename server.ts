@@ -1308,6 +1308,98 @@ const pasadasCatalogo = async (token: string, tipo: "suelo" | "agua", bbox: numb
   };
 };
 
+// ---------------------------------------------------------------------------
+// Observación más reciente del área, para acortar los huecos entre pasadas.
+// El radar (Sentinel-1) pasa cada 6 a 12 días sobre Neuquén; Sentinel-2 (A, B y C)
+// cada 2 a 5 días cuando no hay nubes. Se busca la última imagen óptica despejada
+// SOBRE EL CÍRCULO (no la nubosidad de toda la escena) y se devuelve en color natural.
+// Con "cerca=fecha" se busca la más próxima a esa fecha (para confirmar una mancha de radar).
+// ---------------------------------------------------------------------------
+const SCRIPT_COLOR = `//VERSION=3
+function setup(){return{input:[{bands:["B02","B03","B04","SCL","dataMask"]}],output:{bands:4,sampleType:"UINT8"}}}
+function evaluatePixel(s){
+  if(!s.dataMask)return[0,0,0,0];
+  var g=2.6, nube=[3,8,9,10].indexOf(s.SCL)>=0;
+  // Alfa 255 = despejado, 200 = nube o sombra: así se mide la nubosidad sobre el área
+  return[Math.min(255,s.B04*g*255),Math.min(255,s.B03*g*255),Math.min(255,s.B02*g*255),nube?200:255];
+}`;
+const cacheObs = new Map<string, { t: number; data: any }>();
+
+app.get("/api/observacion-reciente", requiere("suelo.derrame_suelo", "suelo.derrame_agua"), async (req, res) => {
+  try {
+    const lat = Number(req.query.lat), lon = Number(req.query.lon);
+    const radio = Math.min(3000, Math.max(100, Number(req.query.radio) || 500));
+    if (!Number.isFinite(lat) || !Number.isFinite(lon)) return res.status(400).json({ error: "Faltan lat y lon" });
+    const cerca = typeof req.query.cerca === "string" && !Number.isNaN(Date.parse(req.query.cerca)) ? new Date(req.query.cerca) : null;
+    const clave = `${lat.toFixed(4)}|${lon.toFixed(4)}|${radio}|${cerca ? cerca.toISOString().slice(0, 10) : "ult"}`;
+    const c = cacheObs.get(clave);
+    if (c && Date.now() - c.t < 3 * 3600000) { res.set("Cache-Control", "private, max-age=1800"); return res.json(c.data); }
+
+    const token = await obtenerTokenCdse();
+    const bbox = bboxCirculo(lat, lon, radio);
+    const hasta = new Date(), desde = new Date(hasta.getTime() - 30 * 86400000);
+    const [opt, radar] = await Promise.all([
+      pasadasCatalogo(token, "suelo", bbox, desde, hasta, null),
+      pasadasCatalogo(token, "agua", bbox, new Date(hasta.getTime() - 36 * 86400000), hasta, null)
+    ]);
+    // Candidatas ópticas: las más recientes (o las más cercanas a la fecha pedida)
+    let fechas = (opt?.fechas || []).slice();
+    if (cerca) fechas.sort((a, b) => Math.abs(Date.parse(a) - cerca.getTime()) - Math.abs(Date.parse(b) - cerca.getTime()));
+    const lado = Math.round(Math.min(600, Math.max(64, (2 * radio) / 10)));
+    let optico: any = null;
+    const probadas: { fecha: string; nubes_area: number }[] = [];
+    for (const f of fechas.slice(0, 4)) {
+      const dia = f.slice(0, 10);
+      const cuerpo = {
+        input: { bounds: { bbox, properties: { crs: "http://www.opengis.net/def/crs/OGC/1.3/CRS84" } },
+          data: [{ type: "sentinel-2-l2a", dataFilter: { timeRange: { from: `${dia}T00:00:00Z`, to: `${dia}T23:59:59Z` }, mosaickingOrder: "leastCC" } }] },
+        output: { width: lado, height: lado, responses: [{ identifier: "default", format: { type: "image/png" } }] },
+        evalscript: SCRIPT_COLOR
+      };
+      const r = await fetchSH("https://sh.dataspace.copernicus.eu/api/v1/process", {
+        method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json", Accept: "image/png" }, body: JSON.stringify(cuerpo)
+      });
+      if (!r.ok) continue;
+      const img = pngRGBA(new Uint8Array(await r.arrayBuffer()));
+      const W = img.width, H = img.height, px = img.data;
+      const pxM = (2 * radio) / W;
+      let n = 0, nubes = 0;
+      for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) {
+        if (Math.hypot((x + 0.5) * pxM - radio, (y + 0.5) * pxM - radio) > radio) continue;
+        const a = px[(y * W + x) * 4 + 3];
+        if (a === 0) continue;
+        n++; if (a < 230) nubes++;
+      }
+      const pct = n ? Math.round((nubes / n) * 100) : 100;
+      probadas.push({ fecha: f, nubes_area: pct });
+      if (n && pct <= 40) {
+        for (let i = 0; i < W * H; i++) if (px[i * 4 + 3] > 0) px[i * 4 + 3] = 255;
+        optico = {
+          fecha: f, nubes_area: pct, satelite: "Sentinel-2 (óptico, 10 m)",
+          imagen: `data:image/png;base64,${Buffer.from(codificarPng({ width: W, height: H, data: px, channels: 4 })).toString("base64")}`,
+          bbox
+        };
+        break;
+      }
+    }
+    const ultRadar = radar?.ultima ?? null;
+    const candidatas = [optico?.fecha, ultRadar].filter(Boolean) as string[];
+    const ultima = candidatas.sort().at(-1) ?? null;
+    const data = {
+      ultima, ultima_fuente: !ultima ? null : ultima === optico?.fecha ? "óptico" : "radar",
+      radar: { satelite: "Sentinel-1 (radar)", ultima: ultRadar, pasadas_36_dias: radar?.total ?? 0 },
+      optico, optico_probadas: probadas,
+      pasadas_opticas_30_dias: opt?.total ?? 0
+    };
+    cacheObs.set(clave, { t: Date.now(), data });
+    if (cacheObs.size > 100) cacheObs.delete(cacheObs.keys().next().value!);
+    res.set("Cache-Control", "private, max-age=1800");
+    return res.json(data);
+  } catch (e: any) {
+    return res.status(502).json({ error: e.message || "No se pudo buscar la observación reciente" });
+  }
+});
+
 app.get("/api/derrames", requiere("suelo.derrame_suelo", "suelo.derrame_agua", "suelo.barridos"), async (req, res) => {
   try {
     const tipo = req.query.tipo === "agua" ? "agua" : "suelo";

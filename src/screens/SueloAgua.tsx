@@ -161,6 +161,27 @@ export default function SueloAgua() {
   useEffect(() => { if (modos.length && !modos.some(([id]) => id === modo)) setModo(modos[0][0]); }, [clavesModos]);
   useEffect(() => { if (tiposDerrame.length && !tiposDerrame.some(([id]) => id === tipoDerrame)) setTipoDerrame(tiposDerrame[0][0]); }, [clavesTipos]);
   const [resDerrame, setResDerrame] = useState<ResultadoDerrame | null>(null);
+  // Observación óptica más reciente (Sentinel-2) para cubrir los huecos entre pasadas
+  const [obs, setObs] = useState<ObsReciente | null | "cargando" | "error">(null);
+  const [verOptico, setVerOptico] = useState(false);
+  const ponerOptico = (o: ObsReciente | null, ver: boolean) => {
+    const map = mapRef.current;
+    if (!map) return;
+    if (!o?.optico || !ver) {
+      if (map.getLayer("optico-img")) map.removeLayer("optico-img");
+      if (map.getSource("optico-img")) map.removeSource("optico-img");
+      return;
+    }
+    const [w, so, e, n] = o.optico.bbox;
+    const coords: [[number, number], [number, number], [number, number], [number, number]] = [[w, n], [e, n], [e, so], [w, so]];
+    const src = map.getSource("optico-img") as maplibregl.ImageSource | undefined;
+    if (src) src.updateImage({ url: o.optico.imagen, coordinates: coords });
+    else {
+      map.addSource("optico-img", { type: "image", url: o.optico.imagen, coordinates: coords });
+      map.addLayer({ id: "optico-img", type: "raster", source: "optico-img", paint: { "raster-opacity": 1 } }, map.getLayer("derrame-img") ? "derrame-img" : undefined);
+    }
+  };
+  useEffect(() => { ponerOptico(obs && typeof obs === "object" ? obs : null, verOptico); }, [obs, verOptico]);
 
   const analizarDerrame = async () => {
     if (!punto) return;
@@ -169,11 +190,18 @@ export default function SueloAgua() {
     setCargando(true);
     setError(null);
     setResDerrame(null);
+    setObs(null); setVerOptico(false);
     try {
       const r = await fetch(`/api/derrames?tipo=${tipoDerrame}&lat=${punto.lat.toFixed(5)}&lon=${punto.lon.toFixed(5)}&radio=${radio}`);
       const d = await r.json();
       if (!r.ok) throw new Error(d.error || `Error ${r.status}`);
       setResDerrame(d);
+      // En paralelo: la imagen óptica más reciente; si el radar vio manchas, la más cercana a esa pasada
+      setObs("cargando");
+      const cerca = d.tipo === "agua" && d.area_candidata_m2 > 0 && d.pasadas?.ultima ? `&cerca=${encodeURIComponent(d.pasadas.ultima)}` : "";
+      fetch(`/api/observacion-reciente?lat=${punto.lat.toFixed(5)}&lon=${punto.lon.toFixed(5)}&radio=${radio}${cerca}`)
+        .then((x) => x.json().then((j) => (x.ok ? j : Promise.reject(j))))
+        .then((j) => setObs(j)).catch(() => setObs("error"));
       // Capa con los píxeles candidatos
       const img = await fetch(d.imagen.url);
       if (img.ok && map) {
@@ -401,7 +429,12 @@ export default function SueloAgua() {
         ...(resDerrame.manchas && resDerrame.manchas.length
           ? [{ titulo: "Manchas que cuentan", tabla: { columnas: ["Mancha", "Área (m²)", "Centro (lat, lon)"], filas: resDerrame.manchas.map((m, i) => [String(i + 1), m.area_m2.toLocaleString("es-AR"), `${m.lat}, ${m.lon}`]) } }]
           : []),
-        { titulo: "Lectura", texto: [...(textoPasada(resDerrame) ? [textoPasada(resDerrame)!] : []), resDerrame.lectura, "Es un indicio a verificar en campo, no una confirmación."] },
+        { titulo: "Lectura", texto: [...(textoPasada(resDerrame) ? [textoPasada(resDerrame)!] : []), resDerrame.lectura,
+          ...(obs && typeof obs === "object" ? [
+            `Observación más reciente del área: ${obs.ultima ? `${fechaPasada(obs.ultima)} (${obs.ultima_fuente === "óptico" ? "Sentinel-2, óptico" : "Sentinel-1, radar"})` : "sin datos"}.`,
+            obs.optico ? `Imagen óptica sin nubes más ${resDerrame.tipo === "agua" && resDerrame.area_candidata_m2 > 0 ? "cercana a la pasada de radar" : "reciente"}: ${fechaPasada(obs.optico.fecha)}, ${obs.optico.nubes_area} % de nubes sobre el área${verOptico ? " (es la que se ve en el mapa)" : ""}.` : "No hubo imagen óptica despejada en los últimos 30 días."
+          ] : []),
+          "Es un indicio a verificar en campo, no una confirmación."] },
         { titulo: "Cómo leer la imagen", texto: comoLeer(resDerrame.tipo, resDerrame.mancha_minima_m2).map((x) => x.texto) }
       ],
       metodo: resDerrame.metodo,
@@ -523,7 +556,7 @@ export default function SueloAgua() {
         {modo === "derrames" && resDerrame && (
           <>
             <div className="px-5 pt-4"><BotonPdf onClick={exportarDerrame} /></div>
-            <InformeDerrame r={resDerrame} />
+            <InformeDerrame r={resDerrame} obs={obs} verOptico={verOptico} onVerOptico={setVerOptico} />
           </>
         )}
 
@@ -700,7 +733,47 @@ function Grafico({ base, reciente, k }: { base: any[]; reciente: any[]; k: strin
   );
 }
 
-function InformeDerrame({ r }: { r: ResultadoDerrame }) {
+interface ObsReciente {
+  ultima: string | null; ultima_fuente: "óptico" | "radar" | null;
+  radar: { satelite: string; ultima: string | null; pasadas_36_dias: number };
+  optico: { fecha: string; nubes_area: number; satelite: string; imagen: string; bbox: number[] } | null;
+  optico_probadas: { fecha: string; nubes_area: number }[];
+  pasadas_opticas_30_dias: number;
+}
+
+function BloqueObservacion({ r, obs, ver, onVer }: { r: ResultadoDerrame; obs: ObsReciente | null | "cargando" | "error"; ver: boolean; onVer: (v: boolean) => void }) {
+  if (!obs) return null;
+  if (obs === "cargando") return <p className="text-xs text-tenue flex items-center gap-2"><Loader2 className="w-3.5 h-3.5 animate-spin" /> Buscando la imagen óptica más reciente sin nubes…</p>;
+  if (obs === "error") return <p className="text-xs text-tenue">No se pudo buscar la imagen óptica reciente.</p>;
+  const o = obs.optico;
+  const conManchas = r.tipo === "agua" && r.area_candidata_m2 > 0;
+  return (
+    <div className="border border-linea p-3 space-y-2 text-sm">
+      <p className="font-medium">Observación más reciente del área</p>
+      {obs.ultima && <p className="leading-snug">{fechaPasada(obs.ultima)} ({haceDias(obs.ultima)}), {obs.ultima_fuente === "óptico" ? "imagen óptica de Sentinel-2" : "pasada de radar de Sentinel-1"}.</p>}
+      <ul className="text-xs space-y-1">
+        <li className="flex justify-between gap-3"><span className="text-tenue">Radar Sentinel-1</span><span className="num text-right">{obs.radar.ultima ? `${fechaPasada(obs.radar.ultima)} · ${obs.radar.pasadas_36_dias} pasadas en 36 días` : "sin pasadas"}</span></li>
+        <li className="flex justify-between gap-3"><span className="text-tenue">Óptico Sentinel-2</span><span className="num text-right">{o ? `${fechaPasada(o.fecha)} · ${o.nubes_area} % de nubes en el área` : "sin imagen despejada en 30 días"}</span></li>
+      </ul>
+      {o && (
+        <button onClick={() => onVer(!ver)} aria-pressed={ver}
+          className={`w-full text-xs px-2 py-1.5 border ${ver ? "border-hielo text-hielo" : "border-linea text-tenue hover:text-hielo"}`}>
+          {ver ? "Ocultar imagen en color natural" : `Ver en el mapa la imagen en color natural del ${o.fecha.slice(0, 10)}`}
+        </button>
+      )}
+      <p className="text-[11px] text-tenue leading-snug">
+        {conManchas
+          ? "Es la imagen óptica más cercana a la pasada de radar que vio las manchas: si la mancha también se ve en color natural (tornasolada, más oscura o con bordes netos), la sospecha se refuerza."
+          : r.tipo === "agua"
+            ? "El radar pasa cada 6 a 12 días; la imagen óptica cubre los días intermedios cuando no hay nubes. Sirve para mirar el agua a simple vista, no detecta hidrocarburo por sí sola."
+            : "Es la imagen despejada más reciente: permite ver a simple vista si hay suelo manchado o removido después del período analizado."}
+        {" "}Se descartan las imágenes con más de 40 % de nubes sobre el área.
+      </p>
+    </div>
+  );
+}
+
+function InformeDerrame({ r, obs, verOptico, onVerOptico }: { r: ResultadoDerrame; obs: ObsReciente | null | "cargando" | "error"; verOptico: boolean; onVerOptico: (v: boolean) => void }) {
   return (
     <div className="p-5 space-y-3">
       <div className="flex items-baseline justify-between gap-3">
@@ -728,6 +801,7 @@ function InformeDerrame({ r }: { r: ResultadoDerrame }) {
         </p>
       )}
       <p className="text-sm leading-snug">{r.lectura}</p>
+      <BloqueObservacion r={r} obs={obs} ver={verOptico} onVer={onVerOptico} />
       {r.manchas && r.manchas.length > 0 && (
         <ul className="text-xs space-y-1">
           {r.manchas.map((m, i) => (
